@@ -187,6 +187,42 @@ export async function resendOTP(req: Request, res: Response): Promise<void> {
   }
 }
 
+/* POST /api/auth/demo */
+export async function loginDemo(req: Request, res: Response): Promise<void> {
+  try {
+    const DEMO_EMAIL = 'demo@dynamicworks.ao'
+    const DEMO_BALANCE = 20000
+
+    let user = await prisma.user.findUnique({ where: { email: DEMO_EMAIL } })
+
+    if (!user) {
+      user = await prisma.user.create({
+        data: {
+          fullName:     'Conta Demo',
+          email:        DEMO_EMAIL,
+          phone:        '+244900000001',
+          passwordHash: '',
+          kycStatus:    'VERIFIED',
+          role:         'USER',
+        },
+      })
+    }
+
+    // Repõe sempre o saldo a 20.000 Kz
+    await prisma.tradingAccount.upsert({
+      where:  { userId: user.id },
+      update: { balance: DEMO_BALANCE },
+      create: { userId: user.id, balance: DEMO_BALANCE, currency: 'AOA' },
+    })
+
+    const token = makeToken(user.id, user.role)
+    res.json({ token, user: safeUser(user) })
+  } catch (err: unknown) {
+    console.error('demo error:', err)
+    res.status(500).json({ error: 'Erro ao iniciar conta demo' })
+  }
+}
+
 /* POST /api/auth/login */
 export async function login(req: Request, res: Response): Promise<void> {
   try {
