@@ -28,13 +28,7 @@ const registerSchema = z.object({
   fullName: z.string().min(3),
   email:    z.string().email(),
   phone:    z.string()
-    .min(9)
-    .transform((val) => {
-      const clean = val.replace(/[\s\-]/g, '')
-      if (clean.startsWith('244')) return '+' + clean
-      if (!clean.startsWith('+244')) return '+244' + clean
-      return clean
-    }),
+    .transform((val) => val.replace(/[\s\-]/g, '')),
   password: z.string().min(8),
 })
 
@@ -145,7 +139,7 @@ export async function verifyOTPHandler(req: Request, res: Response): Promise<voi
     await prisma.tradingAccount.upsert({
       where:  { userId: user.id },
       update: {},
-      create: { userId: user.id, balance: 0, currency: 'AOA' },
+      create: { userId: user.id, balance: 0, currency: 'USD' },
     })
 
     const token = makeToken(user.id, user.role)
@@ -209,11 +203,11 @@ export async function loginDemo(req: Request, res: Response): Promise<void> {
       })
     }
 
-    // Repõe sempre o saldo a 20.000 Kz
+    // Repõe sempre o saldo a 20.000
     await prisma.tradingAccount.upsert({
       where:  { userId: user.id },
       update: { balance: DEMO_BALANCE },
-      create: { userId: user.id, balance: DEMO_BALANCE, currency: 'AOA' },
+      create: { userId: user.id, balance: DEMO_BALANCE, currency: 'USD' },
     })
 
     const token = makeToken(user.id, user.role)

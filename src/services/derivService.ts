@@ -1,5 +1,6 @@
 import WebSocket from 'ws'
-import { priceCache, updateAOAPairs } from './priceService'
+import { priceCache, getPriceWithSpread } from './priceService'
+import { io } from '../index'
 
 const APP_ID = process.env.DERIV_APP_ID || '127916'
 const DERIV_WS_URL = `wss://ws.derivws.com/websockets/v3?app_id=${APP_ID}`
@@ -9,7 +10,11 @@ const SYMBOL_MAP: Record<string, string> = {
   'frxGBPUSD': 'GBPUSD',
   'frxUSDJPY': 'USDJPY',
   'frxUSDCHF': 'USDCHF',
+  'frxAUDUSD': 'AUDUSD',
+  'frxUSDCAD': 'USDCAD',
+  'frxNZDUSD': 'NZDUSD',
   'frxXAUUSD': 'XAUUSD',
+  'oil_brent': 'UKOIL',
 }
 
 class DerivService {
@@ -46,8 +51,16 @@ class DerivService {
 
           if (internalSymbol) {
             priceCache[internalSymbol] = parseFloat(quote)
-            updateAOAPairs()
-            // console.log(`📈 ${internalSymbol}: ${quote}`)
+            
+            // Emite actualização imediata para o frontend
+            const updated = getPriceWithSpread(internalSymbol)
+            if (updated) {
+              io.emit('price_update', [{
+                ...updated,
+                marketType: 'REAL',
+                changePct: 0 // Simplificado
+              }])
+            }
           }
         }
       } catch (err) {

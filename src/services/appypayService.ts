@@ -5,7 +5,7 @@ const BASE_URL   = process.env.APPYPAY_BASE_URL!
 const CLIENT_ID  = process.env.APPYPAY_CLIENT_ID!
 const SECRET     = process.env.APPYPAY_CLIENT_SECRET!
 const PAY_METHOD = process.env.APPYPAY_PAYMENT_METHOD_ID!
-const RESOURCE   = process.env.APPYPAY_RESOURCE!
+const RESOURCE   = process.env.APPYPAY_RESOURCE
 
 // Token via Azure AD OAuth2
 const TOKEN_URL = 'https://login.microsoftonline.com/appypay.onmicrosoft.com/oauth2/token'
@@ -16,14 +16,16 @@ let tokenExpiry: Date   | null = null
 async function getToken(): Promise<string> {
   if (cachedToken && tokenExpiry && new Date() < tokenExpiry) return cachedToken
 
+  const params: Record<string, string> = {
+    grant_type:    'client_credentials',
+    client_id:     CLIENT_ID,
+    client_secret: SECRET,
+  }
+  if (RESOURCE) params.resource = RESOURCE
+
   const res = await axios.post(
     TOKEN_URL,
-    qs.stringify({
-      grant_type:    'client_credentials',
-      client_id:     CLIENT_ID,
-      client_secret: SECRET,
-      resource:      RESOURCE,
-    }),
+    qs.stringify(params),
     {
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       timeout: 15000,
