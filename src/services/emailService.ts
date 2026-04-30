@@ -4,7 +4,7 @@ import { prisma } from '../prisma/client'
 import { EMAIL_ICONS, emailHeader, emailFooter } from './emailIcons'
 
 const resend = new Resend(process.env.RESEND_API_KEY)
-const FROM = 'Dynamic Works <onboarding@resend.dev>'
+const FROM = 'Dynamic Works <noreply@dynamicworks.ao>'
 
 async function sendMail(to: string, subject: string, html: string): Promise<void> {
   const { error } = await resend.emails.send({ from: FROM, to, subject, html })
