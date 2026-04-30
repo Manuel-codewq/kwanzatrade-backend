@@ -6,15 +6,33 @@ import { getCharge } from '../services/appypayService'
 /* POST /api/payments/webhook */
 export async function handleAppyPayWebhook(req: Request, res: Response): Promise<void> {
   try {
-    console.log('📩 Webhook AppyPay recebido:', JSON.stringify(req.body))
+    // Log completo para descobrir o formato exato do AppyPay
+    console.log('📩 Webhook AppyPay — headers:', JSON.stringify(req.headers))
+    console.log('📩 Webhook AppyPay — body:', JSON.stringify(req.body))
 
-    const { merchantTransactionId, status, amount } = req.body as {
-      merchantTransactionId?: string
-      status?:                string
-      amount?:                number
-    }
+    const body = req.body as Record<string, unknown>
+
+    // AppyPay pode usar vários nomes para o ID da transação
+    const merchantTransactionId =
+      (body['merchantTransactionId'] as string) ||
+      (body['merchant_transaction_id'] as string) ||
+      (body['transactionId'] as string) ||
+      (body['reference'] as string) ||
+      ''
+
+    const status =
+      (body['status'] as string) ||
+      (body['paymentStatus'] as string) ||
+      (body['payment_status'] as string) ||
+      ''
+
+    const amount =
+      (body['amount'] as number) ||
+      (body['value'] as number) ||
+      0
 
     if (!merchantTransactionId) {
+      console.warn('⚠️ Webhook sem merchantTransactionId. Body completo:', JSON.stringify(body))
       res.status(400).json({ error: 'merchantTransactionId obrigatório' })
       return
     }
@@ -22,7 +40,7 @@ export async function handleAppyPayWebhook(req: Request, res: Response): Promise
     // Responde imediatamente — processa em background
     res.json({ message: 'Webhook recebido' })
 
-    processPayment(merchantTransactionId, status ?? '', amount ?? 0)
+    processPayment(merchantTransactionId, status, amount)
   } catch (err: unknown) {
     const e = err as { message?: string }
     console.error('❌ Erro webhook:', e.message)
