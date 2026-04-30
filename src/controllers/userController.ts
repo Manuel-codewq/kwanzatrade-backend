@@ -2,7 +2,7 @@ import { Response } from 'express'
 import { AuthRequest } from '../middleware/auth'
 import { prisma } from '../prisma/client'
 import { transporter } from '../services/emailService'
-import { analyzeKYCDocuments } from '../services/visionService'
+import { uploadToCloudinary } from '../services/cloudinaryService'
 
 const KZ_USD = 925
 
@@ -109,64 +109,29 @@ export async function getMe(req: AuthRequest, res: Response): Promise<void> {
 /* POST /api/user/kyc/submit */
 export async function submitKYC(req: AuthRequest, res: Response): Promise<void> {
   try {
-    const { front, back, selfie } = req.body as { front?: string; back?: string; selfie?: string }
-    
-    // Validar que todos os documentos foram enviados
-    if (!front || !back || !selfie) {
+    const files = req.files as Record<string, Express.Multer.File[]> | undefined
+
+    if (!files?.front?.[0] || !files?.back?.[0] || !files?.selfie?.[0]) {
       res.status(400).json({ error: 'Todos os documentos são obrigatórios' })
       return
     }
 
     const userId = req.userId!
 
-    // Analisar documentos com Vision API
-    const analyses = await analyzeKYCDocuments([
-      { base64: front, type: 'bi_front' },
-      { base64: back, type: 'bi_back' },
-      { base64: selfie, type: 'selfie' },
+    // Upload para Cloudinary em paralelo
+    const folder = `kyc/${userId}`
+    const [frontUrl, backUrl, selfieUrl] = await Promise.all([
+      uploadToCloudinary(files.front[0].buffer,  folder, 'bi_front'),
+      uploadToCloudinary(files.back[0].buffer,   folder, 'bi_back'),
+      uploadToCloudinary(files.selfie[0].buffer, folder, 'selfie'),
     ])
 
-    // Limpar documentos antigos
+    // Limpar documentos antigos e guardar URLs
     await prisma.kYCDocument.deleteMany({ where: { userId } })
-
-    // Guardar novos documentos com scores
     await Promise.all([
-      prisma.kYCDocument.create({
-        data: {
-          userId,
-          type: 'bi_front',
-          url: front,
-          faceDetected: analyses[0].faceDetected,
-          faceConfidence: analyses[0].faceConfidence,
-          documentDetected: analyses[0].documentDetected,
-          textQuality: analyses[0].textQuality,
-          overallScore: analyses[0].overallScore,
-        },
-      }),
-      prisma.kYCDocument.create({
-        data: {
-          userId,
-          type: 'bi_back',
-          url: back,
-          faceDetected: analyses[1].faceDetected,
-          faceConfidence: analyses[1].faceConfidence,
-          documentDetected: analyses[1].documentDetected,
-          textQuality: analyses[1].textQuality,
-          overallScore: analyses[1].overallScore,
-        },
-      }),
-      prisma.kYCDocument.create({
-        data: {
-          userId,
-          type: 'selfie',
-          url: selfie,
-          faceDetected: analyses[2].faceDetected,
-          faceConfidence: analyses[2].faceConfidence,
-          documentDetected: analyses[2].documentDetected,
-          textQuality: analyses[2].textQuality,
-          overallScore: analyses[2].overallScore,
-        },
-      }),
+      prisma.kYCDocument.create({ data: { userId, type: 'bi_front', url: frontUrl  } }),
+      prisma.kYCDocument.create({ data: { userId, type: 'bi_back',  url: backUrl   } }),
+      prisma.kYCDocument.create({ data: { userId, type: 'selfie',   url: selfieUrl } }),
     ])
 
     const user = await prisma.user.update({
