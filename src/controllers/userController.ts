@@ -4,7 +4,6 @@ import { prisma } from '../prisma/client'
 import { transporter } from '../services/emailService'
 import { uploadToCloudinary } from '../services/cloudinaryService'
 
-const KZ_USD = 925
 
 /* GET /api/user/dashboard */
 export async function getDashboard(req: AuthRequest, res: Response): Promise<void> {
@@ -76,7 +75,6 @@ export async function getDashboard(req: AuthRequest, res: Response): Promise<voi
 
     res.json({
       balance,
-      balanceUsd:   Math.round(balance / KZ_USD),
       plToday:      Math.round(plToday),
       plTodayPct:   balance > 0 ? +((plToday / balance) * 100).toFixed(2) : 0,
       leverage,
@@ -141,10 +139,12 @@ export async function submitKYC(req: AuthRequest, res: Response): Promise<void> 
       select: { id: true, fullName: true, email: true, phone: true, kycStatus: true, role: true },
     })
 
-    const admins = await prisma.user.findMany({ where: { role: 'ADMIN' }, select: { email: true } })
-    for (const admin of admins) {
-      try {
-        await transporter.sendMail({
+    // Responde imediatamente — emails em background
+    res.json({ message: 'KYC submetido com sucesso!', user: { ...user, isAdmin: user.role === 'ADMIN' } })
+
+    prisma.user.findMany({ where: { role: 'ADMIN' }, select: { email: true } }).then(admins => {
+      for (const admin of admins) {
+        transporter.sendMail({
           from: '"Dynamic Works" <' + process.env.GMAIL_USER + '>',
           to: admin.email,
           subject: 'Novo KYC para verificar - Dynamic Works',
@@ -160,11 +160,9 @@ export async function submitKYC(req: AuthRequest, res: Response): Promise<void> 
               </a>
             </div>
           `,
-        })
-      } catch {}
-    }
-
-    res.json({ message: 'KYC submetido com sucesso!', user: { ...user, isAdmin: user.role === 'ADMIN' } })
+        }).catch(err => console.error('❌ Email KYC admin falhou:', err.message))
+      }
+    }).catch(err => console.error('❌ Busca admins falhou:', err.message))
   } catch (err: unknown) {
     console.error('submitKYC error:', err)
     res.status(500).json({ error: 'Erro ao processar documentos' })
