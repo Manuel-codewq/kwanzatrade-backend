@@ -93,55 +93,55 @@ export async function approveKYC(req: Request, res: Response): Promise<void> {
     const id   = String(req.params['id'])
     const user = await prisma.user.update({ where: { id }, data: { kycStatus: 'VERIFIED' } })
 
-    try {
-      await transporter.sendMail({
-        from:    '"Dynamic Works" <' + process.env.GMAIL_USER + '>',
-        to:      user.email,
-        subject: 'Conta Verificada - Dynamic Works',
-        html: `
-          <div style="font-family:Arial;background:#080A0E;color:#E8EDF5;
-                      padding:40px;border-radius:16px;max-width:500px;margin:0 auto;">
-            <div style="text-align:center;margin-bottom:32px;">
-              <div style="width:64px;height:64px;background:#00C896;border-radius:16px;
-                          display:inline-block;line-height:64px;text-align:center;">
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" style="vertical-align:middle;">
-                  <path d="M20 6L9 17l-5-5" stroke="white" stroke-width="3"
-                        stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-              </div>
-              <h1 style="font-size:22px;margin-top:16px;">Dynamic Works</h1>
-            </div>
-            <h2 style="color:#00C896;">Conta Verificada com Sucesso</h2>
-            <p>Ola, <strong>${user.fullName}</strong>!</p>
-            <p style="color:#6B7A95;line-height:1.6;">
-              A sua identidade foi verificada com sucesso.
-              Ja pode aceder a todos os servicos da plataforma e comecar a negociar.
-            </p>
-            <div style="background:#161B24;border-radius:12px;padding:20px;
-                        margin:24px 0;border-left:4px solid #00C896;">
-              <p style="color:#00C896;font-weight:bold;margin:0 0 8px;">O que pode fazer agora:</p>
-              <p style="color:#6B7A95;font-size:13px;margin:4px 0;">Depositar fundos em Kwanza via Multicaixa</p>
-              <p style="color:#6B7A95;font-size:13px;margin:4px 0;">Negociar Forex, Ouro e Petroleo</p>
-              <p style="color:#6B7A95;font-size:13px;margin:4px 0;">Aceder a todos os mercados disponiveis</p>
-            </div>
-            <a href="${process.env.CLIENT_URL}/dashboard"
-               style="display:block;background:#CC2B2B;color:white;
-                      padding:14px;border-radius:12px;text-decoration:none;
-                      font-weight:bold;text-align:center;font-size:15px;">
-              Ir para o Dashboard
-            </a>
-            <div style="border-top:1px solid rgba(255,255,255,0.07);margin-top:32px;
-                        padding-top:20px;text-align:center;">
-              <p style="color:#6B7A95;font-size:12px;">
-                &copy; 2025 Dynamic Works &middot; dynamicworks.ao &middot; Luanda, Angola
-              </p>
-            </div>
-          </div>
-        `,
-      })
-    } catch {}
-
+    // Responde imediatamente — email em background
     res.json({ message: 'KYC aprovado!', user })
+
+    transporter.sendMail({
+      from:    '"Dynamic Works" <' + process.env.GMAIL_USER + '>',
+      to:      user.email,
+      subject: 'Conta Verificada - Dynamic Works',
+      html: `
+        <div style="font-family:Arial;background:#080A0E;color:#E8EDF5;
+                    padding:40px;border-radius:16px;max-width:500px;margin:0 auto;">
+          <div style="text-align:center;margin-bottom:32px;">
+            <div style="width:64px;height:64px;background:#00C896;border-radius:16px;
+                        display:inline-block;line-height:64px;text-align:center;">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" style="vertical-align:middle;">
+                <path d="M20 6L9 17l-5-5" stroke="white" stroke-width="3"
+                      stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </div>
+            <h1 style="font-size:22px;margin-top:16px;">Dynamic Works</h1>
+          </div>
+          <h2 style="color:#00C896;">Conta Verificada com Sucesso</h2>
+          <p>Ola, <strong>${user.fullName}</strong>!</p>
+          <p style="color:#6B7A95;line-height:1.6;">
+            A sua identidade foi verificada com sucesso.
+            Ja pode aceder a todos os servicos da plataforma e comecar a negociar.
+          </p>
+          <div style="background:#161B24;border-radius:12px;padding:20px;
+                      margin:24px 0;border-left:4px solid #00C896;">
+            <p style="color:#00C896;font-weight:bold;margin:0 0 8px;">O que pode fazer agora:</p>
+            <p style="color:#6B7A95;font-size:13px;margin:4px 0;">Depositar fundos em Kwanza via Multicaixa</p>
+            <p style="color:#6B7A95;font-size:13px;margin:4px 0;">Negociar Forex, Ouro e Petroleo</p>
+            <p style="color:#6B7A95;font-size:13px;margin:4px 0;">Aceder a todos os mercados disponiveis</p>
+          </div>
+          <a href="${process.env.CLIENT_URL || 'https://dynamicworks.ao'}/dashboard"
+             style="display:block;background:#CC2B2B;color:white;
+                    padding:14px;border-radius:12px;text-decoration:none;
+                    font-weight:bold;text-align:center;font-size:15px;">
+            Ir para o Dashboard
+          </a>
+          <div style="border-top:1px solid rgba(255,255,255,0.07);margin-top:32px;
+                      padding-top:20px;text-align:center;">
+            <p style="color:#6B7A95;font-size:12px;">
+              &copy; 2025 Dynamic Works &middot; dynamicworks.ao &middot; Luanda, Angola
+            </p>
+          </div>
+        </div>
+      `,
+    }).catch(err => console.error('❌ Email aprovação falhou:', err.message))
+
   } catch (err: unknown) {
     console.error('admin approve kyc error:', err)
     res.status(500).json({ error: 'Erro interno' })
@@ -155,51 +155,50 @@ export async function rejectKYC(req: Request, res: Response): Promise<void> {
     const { reason } = req.body as { reason?: string }
     const user   = await prisma.user.update({ where: { id }, data: { kycStatus: 'REJECTED' } })
 
-    try {
-      await transporter.sendMail({
-        from:    '"Dynamic Works" <' + process.env.GMAIL_USER + '>',
-        to:      user.email,
-        subject: 'Verificacao Rejeitada - Dynamic Works',
-        html: `
-          <div style="font-family:Arial;background:#080A0E;color:#E8EDF5;
-                      padding:40px;border-radius:16px;max-width:500px;margin:0 auto;">
-            <div style="text-align:center;margin-bottom:32px;">
-              <div style="width:64px;height:64px;background:#CC2B2B;border-radius:16px;
-                          display:inline-block;line-height:64px;text-align:center;">
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" style="vertical-align:middle;">
-                  <path d="M18 6L6 18M6 6l12 12" stroke="white" stroke-width="2.5"
-                        stroke-linecap="round"/>
-                </svg>
-              </div>
-              <h1 style="font-size:22px;margin-top:16px;">Dynamic Works</h1>
-            </div>
-            <h2 style="color:#CC2B2B;">Verificacao Rejeitada</h2>
-            <p>Ola, <strong>${user.fullName}</strong>!</p>
-            <p style="color:#6B7A95;line-height:1.6;">
-              A sua verificacao de identidade foi rejeitada.
-              Por favor submeta novos documentos com melhor qualidade.
-            </p>
-            ${reason ? `<div style="background:#161B24;border-radius:8px;padding:14px;margin:16px 0;">
-              <p style="color:#E8EDF5;font-size:13px;margin:0;">Motivo: ${reason}</p>
-            </div>` : ''}
-            <a href="${process.env.CLIENT_URL}/kyc"
-               style="display:block;background:#CC2B2B;color:white;
-                      padding:14px;border-radius:12px;text-decoration:none;
-                      font-weight:bold;text-align:center;font-size:15px;">
-              Submeter novos documentos
-            </a>
-            <div style="border-top:1px solid rgba(255,255,255,0.07);margin-top:32px;
-                        padding-top:20px;text-align:center;">
-              <p style="color:#6B7A95;font-size:12px;">
-                Suporte: suporte@dynamicworks.ao
-              </p>
-            </div>
-          </div>
-        `,
-      })
-    } catch {}
-
+    // Responde imediatamente — email em background
     res.json({ message: 'KYC rejeitado', user })
+
+    transporter.sendMail({
+      from:    '"Dynamic Works" <' + process.env.GMAIL_USER + '>',
+      to:      user.email,
+      subject: 'Verificacao Rejeitada - Dynamic Works',
+      html: `
+        <div style="font-family:Arial;background:#080A0E;color:#E8EDF5;
+                    padding:40px;border-radius:16px;max-width:500px;margin:0 auto;">
+          <div style="text-align:center;margin-bottom:32px;">
+            <div style="width:64px;height:64px;background:#CC2B2B;border-radius:16px;
+                        display:inline-block;line-height:64px;text-align:center;">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" style="vertical-align:middle;">
+                <path d="M18 6L6 18M6 6l12 12" stroke="white" stroke-width="2.5"
+                      stroke-linecap="round"/>
+              </svg>
+            </div>
+            <h1 style="font-size:22px;margin-top:16px;">Dynamic Works</h1>
+          </div>
+          <h2 style="color:#CC2B2B;">Verificacao Rejeitada</h2>
+          <p>Ola, <strong>${user.fullName}</strong>!</p>
+          <p style="color:#6B7A95;line-height:1.6;">
+            A sua verificacao de identidade foi rejeitada.
+            Por favor submeta novos documentos com melhor qualidade.
+          </p>
+          ${reason ? `<div style="background:#161B24;border-radius:8px;padding:14px;margin:16px 0;">
+            <p style="color:#E8EDF5;font-size:13px;margin:0;">Motivo: ${reason}</p>
+          </div>` : ''}
+          <a href="${process.env.CLIENT_URL}/kyc"
+             style="display:block;background:#CC2B2B;color:white;
+                    padding:14px;border-radius:12px;text-decoration:none;
+                    font-weight:bold;text-align:center;font-size:15px;">
+            Submeter novos documentos
+          </a>
+          <div style="border-top:1px solid rgba(255,255,255,0.07);margin-top:32px;
+                      padding-top:20px;text-align:center;">
+            <p style="color:#6B7A95;font-size:12px;">
+              Suporte: suporte@dynamicworks.ao
+            </p>
+          </div>
+        </div>
+      `,
+    }).catch(err => console.error('❌ Email rejeição falhou:', err.message))
   } catch (err: unknown) {
     console.error('admin reject kyc error:', err)
     res.status(500).json({ error: 'Erro interno' })
