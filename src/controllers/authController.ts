@@ -2,6 +2,7 @@ import { Request, Response } from 'express'
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 import { z } from 'zod'
+import { Role } from '@prisma/client'
 import { prisma } from '../prisma/client'
 import { sendEmailOTP, verifyEmailOTP } from '../services/emailService'
 
@@ -203,7 +204,7 @@ export async function loginDemo(req: Request, res: Response): Promise<void> {
           phone:        '+244900000001',
           passwordHash: '',
           kycStatus:    'VERIFIED',
-          role:         'USER',
+          role:         Role.CLIENT,
         },
       })
     }
