@@ -270,5 +270,47 @@ export async function sendStatusEmail(
   console.log('Email de estado enviado para', email, '(', status, ')')
 }
 
+/* ─── Confirmação de depósito ──────────────────────────────── */
+
+export async function sendDepositConfirmationEmail(
+  email:     string,
+  name:      string,
+  amount:    number,
+  reference: string,
+): Promise<void> {
+  const amountFmt = amount.toLocaleString('pt-AO', { minimumFractionDigits: 2 }) + ' Kz'
+
+  await sendMail(email, 'Depósito Confirmado - Dynamic Works', `
+    <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;
+                background:#080A0E;color:#E8EDF5;padding:40px;border-radius:16px;">
+      ${emailHeader(EMAIL_ICONS.deposit, 'Depósito Confirmado')}
+
+      <h2 style="color:#00C896;font-size:18px;margin-bottom:8px;">Depósito Confirmado</h2>
+      <p style="color:#E8EDF5;margin-bottom:4px;">Ola, <strong>${name}</strong>!</p>
+      <p style="color:#6B7A95;margin-bottom:24px;">
+        O seu depósito foi processado com sucesso e o saldo foi creditado na sua conta.
+      </p>
+
+      <div style="background:#161B24;border:1px solid rgba(0,200,150,0.2);
+                  border-radius:12px;padding:24px;text-align:center;margin-bottom:24px;">
+        <p style="color:#6B7A95;font-size:12px;margin:0 0 8px;">Valor depositado</p>
+        <div style="font-size:32px;font-weight:bold;color:#00C896;">${amountFmt}</div>
+        <p style="color:#6B7A95;font-size:11px;margin:8px 0 0;">Ref: ${reference}</p>
+      </div>
+
+      <a href="${process.env.CLIENT_URL || 'https://dynamicworks.ao'}/dashboard"
+         style="display:block;background:#CC2B2B;color:white;
+                padding:14px;border-radius:12px;text-decoration:none;
+                font-weight:bold;text-align:center;font-size:15px;">
+        Ver Dashboard
+      </a>
+
+      ${emailFooter()}
+    </div>
+  `)
+
+  console.log('Email depósito confirmado enviado para', email)
+}
+
 /* ─── Email simples (KYC aprovação/rejeição) ───────────────── */
 export { sendMail }

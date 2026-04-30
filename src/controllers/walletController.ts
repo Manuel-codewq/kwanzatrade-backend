@@ -1,8 +1,8 @@
 import { Response } from 'express'
 import { AuthRequest } from '../middleware/auth'
 import { prisma } from '../prisma/client'
-import { randomUUID } from 'crypto'
 import { sendTransactionOTP, verifyTransactionOTP } from '../services/emailService'
+import { createCharge } from '../services/appypayService'
 
 /* GET /api/wallet/balance */
 export async function getBalance(req: AuthRequest, res: Response): Promise<void> {
@@ -58,11 +58,16 @@ export async function requestDeposit(req: AuthRequest, res: Response): Promise<v
   }
 }
 
-/* POST /api/wallet/deposit/confirm — verifica OTP e cria transação */
+/* POST /api/wallet/deposit/confirm — verifica OTP e inicia cobrança AppyPay */
 export async function confirmDeposit(req: AuthRequest, res: Response): Promise<void> {
   try {
-    const { amount, paymentMethod, code } = req.body as {
-      amount: number; paymentMethod: string; code: string
+    const { amount, phone, code } = req.body as {
+      amount: number; phone: string; code: string
+    }
+
+    if (!phone) {
+      res.status(400).json({ error: 'Número de telemóvel obrigatório' })
+      return
     }
 
     const user = await prisma.user.findUnique({ where: { id: req.userId! } })
@@ -74,22 +79,44 @@ export async function confirmDeposit(req: AuthRequest, res: Response): Promise<v
       return
     }
 
+    const merchantTransactionId = `DW-${Date.now()}-${req.userId!.slice(0, 8)}`
+
     const transaction = await prisma.transaction.create({
       data: {
         userId:        req.userId!,
         type:          'DEPOSIT',
         amount,
         currency:      'AOA',
-        paymentMethod: paymentMethod || 'MULTICAIXA',
-        reference:     'DW-DEP-' + Date.now(),
+        paymentMethod: 'multicaixa_express',
+        reference:     merchantTransactionId,
         status:        'PENDING',
       },
     })
 
-    res.status(201).json({
-      message: 'Depósito solicitado com sucesso! Aguarda confirmação.',
-      transaction,
-    })
+    try {
+      const normalizedPhone = phone.startsWith('+') ? phone : `+${phone}`
+      const charge = await createCharge({
+        amount,
+        phone:                 normalizedPhone,
+        merchantTransactionId,
+        description:           `Deposito Dynamic Works - ${merchantTransactionId}`,
+      })
+
+      res.status(201).json({
+        message:       'Pedido enviado! Confirme no Multicaixa Express no seu telemóvel.',
+        reference:     merchantTransactionId,
+        transactionId: transaction.id,
+        chargeId:      charge.id ?? charge.chargeId ?? null,
+      })
+    } catch (appypayErr: unknown) {
+      await prisma.transaction.update({
+        where: { id: transaction.id },
+        data:  { status: 'FAILED' },
+      })
+      const e = appypayErr as { response?: { data?: unknown }; message?: string }
+      console.error('❌ AppyPay erro:', e.response?.data ?? e.message)
+      res.status(502).json({ error: 'Erro ao processar pagamento. Tente novamente.' })
+    }
   } catch {
     res.status(500).json({ error: 'Erro interno' })
   }

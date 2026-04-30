@@ -12,8 +12,9 @@ import tradingRoutes from './routes/trading'
 import walletRoutes  from './routes/wallet'
 import userRoutes    from './routes/user'
 import adminRoutes   from './routes/admin'
+import paymentRoutes from './routes/payments'
 import { startPriceSocket } from './websocket/priceSocket'
-import { loadLastPrices, fetchAndUpdatePrices } from './services/priceService'
+import { loadLastPrices } from './services/priceService'
 import { derivService } from './services/derivService'
 import { generalLimiter, authLimiter } from './middleware/rateLimit'
 
@@ -64,11 +65,12 @@ app.use(express.json({ limit: '15mb' }))
 app.use(generalLimiter)
 
 /* ── rotas ── */
-app.use('/api/auth',    authLimiter, authRoutes)
-app.use('/api/trading', tradingRoutes)
-app.use('/api/wallet',  walletRoutes)
-app.use('/api/user',    userRoutes)
-app.use('/api/admin',   adminRoutes)
+app.use('/api/auth',     authLimiter, authRoutes)
+app.use('/api/trading',  tradingRoutes)
+app.use('/api/wallet',   walletRoutes)
+app.use('/api/user',     userRoutes)
+app.use('/api/admin',    adminRoutes)
+app.use('/api/payments', paymentRoutes)
 
 /* ── health check ── */
 app.get('/health', (_, res) => {
@@ -88,13 +90,7 @@ httpServer.listen(PORT, () => {
     console.log('✅ Preços carregados da BD')
   })
 
-  // Chama API real apenas a cada 5 minutos — primeira chamada após 5 min
-  setTimeout(() => {
-    fetchAndUpdatePrices()
-    setInterval(fetchAndUpdatePrices, 5 * 60 * 1000)
-  }, 5 * 60 * 1000)
-
-  console.log('⏱️ API de preços: actualização a cada 5 minutos')
+  console.log('📡 Deriv WebSocket activo para preços em tempo real')
 })
 
 export { io }
