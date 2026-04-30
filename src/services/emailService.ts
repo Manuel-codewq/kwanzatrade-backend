@@ -1,10 +1,16 @@
 import nodemailer from 'nodemailer'
 import crypto from 'crypto'
+import dns from 'dns'
 import { prisma } from '../prisma/client'
 import { EMAIL_ICONS, emailHeader, emailFooter } from './emailIcons'
 
+// Força IPv4 — Railway não suporta IPv6 outbound
+dns.setDefaultResultOrder('ipv4first')
+
 export const transporter = nodemailer.createTransport({
-  service: 'gmail',
+  host: 'smtp.gmail.com',
+  port: 465,
+  secure: true,
   auth: {
     user: process.env.GMAIL_USER!,
     pass: process.env.GMAIL_APP_PASSWORD!,
@@ -121,7 +127,7 @@ export async function sendTransactionOTP(
   const typeText  = isDeposit ? 'Deposito' : 'Levantamento'
   const typeColor = isDeposit ? '#00C896' : '#E8A020'
   const iconSvg   = isDeposit ? EMAIL_ICONS.deposit : EMAIL_ICONS.withdrawal
-  const amountFmt = amount.toLocaleString('pt-PT') + ' Kz'
+  const amountFmt = '$' + amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
   console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
   console.log(`OTP ${typeText} para ${email}: ${code}`)
