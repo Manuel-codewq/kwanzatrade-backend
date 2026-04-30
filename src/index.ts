@@ -23,7 +23,8 @@ const io         = new Server(httpServer, {
     origin: [
       'http://localhost:5173',
       'http://localhost:4173',
-      'https://dynamicworks.up.railway.app',
+      'https://dynamicworks.ao',
+      'https://www.dynamicworks.ao',
       process.env.CLIENT_URL || '',
     ].filter(Boolean),
     credentials: true,
@@ -51,7 +52,8 @@ app.use(cors({
   origin: [
     'http://localhost:5173',
     'http://localhost:4173',
-    'https://dynamicworks.up.railway.app',
+    'https://dynamicworks.ao',
+    'https://www.dynamicworks.ao',
     process.env.CLIENT_URL || '',
   ].filter(Boolean),
   credentials: true,
