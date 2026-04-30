@@ -109,7 +109,8 @@ export async function getMe(req: AuthRequest, res: Response): Promise<void> {
 /* POST /api/user/kyc/submit */
 export async function submitKYC(req: AuthRequest, res: Response): Promise<void> {
   try {
-    const files = req.files as Record<string, Express.Multer.File[]> | undefined
+    interface MulFile { buffer: Buffer; mimetype: string; originalname: string }
+    const files = req.files as Record<string, MulFile[]> | undefined
 
     if (!files?.front?.[0] || !files?.back?.[0] || !files?.selfie?.[0]) {
       res.status(400).json({ error: 'Todos os documentos são obrigatórios' })
