@@ -1,0 +1,207 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id           String         @id @default(uuid())
+  fullName     String
+  email        String         @unique
+  phone        String         @unique
+  passwordHash String
+  kycStatus    KycStatus      @default(PENDING)
+  role         Role           @default(CLIENT)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  status       UserStatus     @default(ACTIVE)
+
+  account      TradingAccount?
+  transactions Transaction[]
+  orders       Order[]
+  brokerRevenues BrokerRevenue[]
+  kycDocuments KYCDocument[]
+}
+
+model TradingAccount {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  balance   Float    @default(0)
+  currency  String   @default("AOA")
+  leverage  Int      @default(100)
+  createdAt DateTime @default(now())
+
+  user   User    @relation(fields: [userId], references: [id])
+  orders Order[]
+}
+
+model Order {
+  id          String      @id @default(uuid())
+  userId      String
+  accountId   String
+  symbol      String
+  side        OrderSide
+  lots        Float
+  openPrice   Float
+  closePrice  Float?
+  stopLoss    Float?
+  takeProfit  Float?
+  profitLoss  Float?
+  status      OrderStatus @default(OPEN)
+  marketType  MarketType  @default(REAL)
+  openedAt    DateTime    @default(now())
+  closedAt    DateTime?
+
+  user    User           @relation(fields: [userId], references: [id])
+  account TradingAccount @relation(fields: [accountId], references: [id])
+}
+
+model Transaction {
+  id            String            @id @default(uuid())
+  userId        String
+  type          TransactionType
+  amount        Float
+  currency      String            @default("AOA")
+  paymentMethod String?
+  reference     String?           @unique
+  status        TransactionStatus @default(PENDING)
+  createdAt     DateTime          @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+model BrokerRevenue {
+  id          String      @id @default(uuid())
+  type        RevenueType
+  amount      Float
+  currency    String      @default("AOA")
+  userId      String
+  orderId     String?
+  symbol      String?
+  description String?
+  createdAt   DateTime    @default(now())
+
+  user        User        @relation(fields: [userId], references: [id])
+}
+
+model OTP {
+  id        String   @id @default(uuid())
+  phone     String   @unique
+  code      String
+  expires   DateTime
+  verified  Boolean  @default(false)
+  attempts  Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model KYCDocument {
+  id        String   @id @default(uuid())
+  userId    String
+  type      String   @db.VarChar(50)  // 'bi_front', 'bi_back', 'selfie'
+  url       String   @db.Text         // base64 ou URL do arquivo
+  
+  // Vision API scores
+  faceDetected    Boolean @default(false)
+  faceConfidence  Int     @default(0)   // 0-100
+  documentDetected Boolean @default(false)
+  textQuality     Int     @default(0)   // 0-100
+  overallScore    Int     @default(0)   // 0-100
+  
+  uploadedAt DateTime @default(now())
+  
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+  @@index([type])
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  BLOCKED
+}
+
+enum KycStatus {
+  PENDING
+  REVIEW
+  VERIFIED
+  REJECTED
+}
+
+enum Role {
+  CLIENT
+  ADMIN
+}
+
+enum OrderSide {
+  BUY
+  SELL
+}
+
+enum OrderStatus {
+  OPEN
+  CLOSED
+  CANCELLED
+}
+
+enum MarketType {
+  REAL
+  INTERNAL
+}
+
+enum TransactionType {
+  DEPOSIT
+  WITHDRAWAL
+  PROFIT
+  LOSS
+  COMMISSION
+  SWAP
+}
+
+enum TransactionStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+enum RevenueType {
+  SPREAD
+  COMMISSION
+  SWAP
+  OTHER
+}
+
+model ForexPrice {
+  id        Int       @id @default(autoincrement())
+  symbol    String    @unique
+  mid       Float
+  bid       Float
+  ask       Float
+  spread    Float
+  source    String    @default("TWELVEDATA")
+  timestamp DateTime  @default(now()) @updatedAt
+
+  @@index([symbol])
+  @@index([timestamp])
+}
+
+model MarketPrice {
+  id        String   @id @default(uuid())
+  symbol    String   @unique
+  price     Float
+  bid       Float
+  ask       Float
+  spread    Float
+  source    String   @default("api")
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+
+  @@index([symbol])
+  @@index([updatedAt])
+}

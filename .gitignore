@@ -1,0 +1,34 @@
+# Environment
+.env
+.env.local
+
+# Dependencies
+node_modules/
+
+# Build
+dist/
+build/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Google Cloud Credentials
+google-credentials.json
+
+google-credentials.json
+
+node_modules
+dist
+.env
+google-credentials.json

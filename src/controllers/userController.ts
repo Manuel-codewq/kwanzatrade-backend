@@ -1,0 +1,221 @@
+import { Response } from 'express'
+import { AuthRequest } from '../middleware/auth'
+import { prisma } from '../prisma/client'
+import { transporter } from '../services/emailService'
+import { analyzeKYCDocuments } from '../services/visionService'
+
+const KZ_USD = 925
+
+/* GET /api/user/dashboard */
+export async function getDashboard(req: AuthRequest, res: Response): Promise<void> {
+  try {
+    const userId  = req.userId!
+    const account = await prisma.tradingAccount.findUnique({ where: { userId } })
+    const balance  = account?.balance  ?? 0
+    const leverage = account?.leverage ?? 100
+
+    const openPositions = await prisma.order.findMany({
+      where:   { userId, status: 'OPEN' },
+      orderBy: { openedAt: 'desc' },
+    })
+
+    const todayStart = new Date()
+    todayStart.setHours(0, 0, 0, 0)
+    const todayOrders = await prisma.order.findMany({
+      where:  { userId, status: 'CLOSED', closedAt: { gte: todayStart } },
+      select: { profitLoss: true },
+    })
+    const plToday = todayOrders.reduce((s, o) => s + (o.profitLoss ?? 0), 0)
+
+    const recentTransactions = await prisma.transaction.findMany({
+      where:   { userId },
+      orderBy: { createdAt: 'desc' },
+      take:    5,
+    })
+
+    // Build daily balance deltas for chart
+    const ninetyDaysAgo = new Date()
+    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90)
+
+    const [completedTxs, closedOrders] = await Promise.all([
+      prisma.transaction.findMany({
+        where:  { userId, status: 'COMPLETED', createdAt: { gte: ninetyDaysAgo } },
+        select: { createdAt: true, amount: true },
+      }),
+      prisma.order.findMany({
+        where:  { userId, status: 'CLOSED', closedAt: { gte: ninetyDaysAgo } },
+        select: { closedAt: true, profitLoss: true },
+      }),
+    ])
+
+    const dailyDeltas: Record<string, number> = {}
+    for (const tx of completedTxs) {
+      const day = tx.createdAt.toISOString().slice(0, 10)
+      dailyDeltas[day] = (dailyDeltas[day] ?? 0) + tx.amount
+    }
+    for (const o of closedOrders) {
+      if (o.closedAt && o.profitLoss !== null) {
+        const day = o.closedAt.toISOString().slice(0, 10)
+        dailyDeltas[day] = (dailyDeltas[day] ?? 0) + o.profitLoss
+      }
+    }
+
+    const totalRecent  = Object.values(dailyDeltas).reduce((s, v) => s + v, 0)
+    const startBalance = balance - totalRecent
+
+    function buildChart(days: number): number[] {
+      const today = new Date()
+      let running = startBalance
+      return Array.from({ length: days }, (_, i) => {
+        const d = new Date(today)
+        d.setDate(d.getDate() - (days - 1 - i))
+        running += dailyDeltas[d.toISOString().slice(0, 10)] ?? 0
+        return Math.max(0, Math.round(running))
+      })
+    }
+
+    res.json({
+      balance,
+      balanceUsd:   Math.round(balance / KZ_USD),
+      plToday:      Math.round(plToday),
+      plTodayPct:   balance > 0 ? +((plToday / balance) * 100).toFixed(2) : 0,
+      leverage,
+      openPositions,
+      recentTransactions,
+      chartData: { '7D': buildChart(7), '30D': buildChart(30), '90D': buildChart(90) },
+    })
+  } catch {
+    res.status(500).json({ error: 'Erro interno' })
+  }
+}
+
+/* GET /api/user/me */
+export async function getMe(req: AuthRequest, res: Response): Promise<void> {
+  try {
+    const user = await prisma.user.findUnique({
+      where:  { id: req.userId! },
+      select: { id: true, fullName: true, email: true, phone: true, kycStatus: true, role: true, createdAt: true },
+    })
+    if (!user) {
+      res.status(404).json({ error: 'Utilizador não encontrado' })
+      return
+    }
+    res.json({ ...user, isAdmin: user.role === 'ADMIN' })
+  } catch {
+    res.status(500).json({ error: 'Erro interno' })
+  }
+}
+
+/* POST /api/user/kyc/submit */
+export async function submitKYC(req: AuthRequest, res: Response): Promise<void> {
+  try {
+    const { front, back, selfie } = req.body as { front?: string; back?: string; selfie?: string }
+    
+    // Validar que todos os documentos foram enviados
+    if (!front || !back || !selfie) {
+      res.status(400).json({ error: 'Todos os documentos são obrigatórios' })
+      return
+    }
+
+    const userId = req.userId!
+
+    // Analisar documentos com Vision API
+    const analyses = await analyzeKYCDocuments([
+      { base64: front, type: 'bi_front' },
+      { base64: back, type: 'bi_back' },
+      { base64: selfie, type: 'selfie' },
+    ])
+
+    // Limpar documentos antigos
+    await prisma.kYCDocument.deleteMany({ where: { userId } })
+
+    // Guardar novos documentos com scores
+    await Promise.all([
+      prisma.kYCDocument.create({
+        data: {
+          userId,
+          type: 'bi_front',
+          url: front,
+          faceDetected: analyses[0].faceDetected,
+          faceConfidence: analyses[0].faceConfidence,
+          documentDetected: analyses[0].documentDetected,
+          textQuality: analyses[0].textQuality,
+          overallScore: analyses[0].overallScore,
+        },
+      }),
+      prisma.kYCDocument.create({
+        data: {
+          userId,
+          type: 'bi_back',
+          url: back,
+          faceDetected: analyses[1].faceDetected,
+          faceConfidence: analyses[1].faceConfidence,
+          documentDetected: analyses[1].documentDetected,
+          textQuality: analyses[1].textQuality,
+          overallScore: analyses[1].overallScore,
+        },
+      }),
+      prisma.kYCDocument.create({
+        data: {
+          userId,
+          type: 'selfie',
+          url: selfie,
+          faceDetected: analyses[2].faceDetected,
+          faceConfidence: analyses[2].faceConfidence,
+          documentDetected: analyses[2].documentDetected,
+          textQuality: analyses[2].textQuality,
+          overallScore: analyses[2].overallScore,
+        },
+      }),
+    ])
+
+    const user = await prisma.user.update({
+      where: { id: userId },
+      data: { kycStatus: 'REVIEW' },
+      select: { id: true, fullName: true, email: true, phone: true, kycStatus: true, role: true },
+    })
+
+    const admins = await prisma.user.findMany({ where: { role: 'ADMIN' }, select: { email: true } })
+    for (const admin of admins) {
+      try {
+        await transporter.sendMail({
+          from: '"Dynamic Works" <' + process.env.GMAIL_USER + '>',
+          to: admin.email,
+          subject: 'Novo KYC para verificar - Dynamic Works',
+          html: `
+            <div style="font-family:Arial;background:#080A0E;color:#E8EDF5;padding:32px;border-radius:16px;max-width:500px;">
+              <h2 style="color:#CC2B2B;">Novo KYC submetido</h2>
+              <p>O utilizador <strong>${user.fullName}</strong> (${user.email})
+                 submeteu documentos para verificacao KYC.</p>
+              <a href="${process.env.CLIENT_URL}/admin/kyc"
+                 style="display:inline-block;background:#CC2B2B;color:white;
+                        padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;">
+                Ver no Admin
+              </a>
+            </div>
+          `,
+        })
+      } catch {}
+    }
+
+    res.json({ message: 'KYC submetido com sucesso!', user: { ...user, isAdmin: user.role === 'ADMIN' } })
+  } catch (err: unknown) {
+    console.error('submitKYC error:', err)
+    res.status(500).json({ error: 'Erro ao processar documentos' })
+  }
+}
+
+/* PATCH /api/user/me */
+export async function updateMe(req: AuthRequest, res: Response): Promise<void> {
+  try {
+    const { fullName, phone } = req.body as { fullName?: string; phone?: string }
+    const user = await prisma.user.update({
+      where: { id: req.userId! },
+      data:  { ...(fullName && { fullName }), ...(phone && { phone }) },
+      select: { id: true, fullName: true, email: true, phone: true, kycStatus: true, role: true },
+    })
+    res.json({ ...user, isAdmin: user.role === 'ADMIN' })
+  } catch {
+    res.status(500).json({ error: 'Erro interno' })
+  }
+}
