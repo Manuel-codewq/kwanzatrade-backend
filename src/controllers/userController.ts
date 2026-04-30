@@ -1,7 +1,7 @@
 import { Response } from 'express'
 import { AuthRequest } from '../middleware/auth'
 import { prisma } from '../prisma/client'
-import { transporter } from '../services/emailService'
+import { sendMail } from '../services/emailService'
 import { uploadToCloudinary } from '../services/cloudinaryService'
 
 
@@ -144,23 +144,18 @@ export async function submitKYC(req: AuthRequest, res: Response): Promise<void> 
 
     prisma.user.findMany({ where: { role: 'ADMIN' }, select: { email: true } }).then(admins => {
       for (const admin of admins) {
-        transporter.sendMail({
-          from: '"Dynamic Works" <' + process.env.GMAIL_USER + '>',
-          to: admin.email,
-          subject: 'Novo KYC para verificar - Dynamic Works',
-          html: `
-            <div style="font-family:Arial;background:#080A0E;color:#E8EDF5;padding:32px;border-radius:16px;max-width:500px;">
-              <h2 style="color:#CC2B2B;">Novo KYC submetido</h2>
-              <p>O utilizador <strong>${user.fullName}</strong> (${user.email})
-                 submeteu documentos para verificacao KYC.</p>
-              <a href="${process.env.CLIENT_URL}/admin/kyc"
-                 style="display:inline-block;background:#CC2B2B;color:white;
-                        padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;">
-                Ver no Admin
-              </a>
-            </div>
-          `,
-        }).catch(err => console.error('❌ Email KYC admin falhou:', err.message))
+        sendMail(admin.email, 'Novo KYC para verificar - Dynamic Works', `
+          <div style="font-family:Arial;background:#080A0E;color:#E8EDF5;padding:32px;border-radius:16px;max-width:500px;">
+            <h2 style="color:#CC2B2B;">Novo KYC submetido</h2>
+            <p>O utilizador <strong>${user.fullName}</strong> (${user.email})
+               submeteu documentos para verificacao KYC.</p>
+            <a href="${process.env.CLIENT_URL}/admin/kyc"
+               style="display:inline-block;background:#CC2B2B;color:white;
+                      padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;">
+              Ver no Admin
+            </a>
+          </div>
+        `).catch(err => console.error('❌ Email KYC admin falhou:', err.message))
       }
     }).catch(err => console.error('❌ Busca admins falhou:', err.message))
   } catch (err: unknown) {

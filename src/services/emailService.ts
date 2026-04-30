@@ -1,21 +1,15 @@
-import nodemailer from 'nodemailer'
+import { Resend } from 'resend'
 import crypto from 'crypto'
-import dns from 'dns'
 import { prisma } from '../prisma/client'
 import { EMAIL_ICONS, emailHeader, emailFooter } from './emailIcons'
 
-// Força IPv4 — Railway não suporta IPv6 outbound
-dns.setDefaultResultOrder('ipv4first')
+const resend = new Resend(process.env.RESEND_API_KEY)
+const FROM = 'Dynamic Works <onboarding@resend.dev>'
 
-export const transporter = nodemailer.createTransport({
-  host: 'smtp.gmail.com',
-  port: 465,
-  secure: true,
-  auth: {
-    user: process.env.GMAIL_USER!,
-    pass: process.env.GMAIL_APP_PASSWORD!,
-  },
-})
+async function sendMail(to: string, subject: string, html: string): Promise<void> {
+  const { error } = await resend.emails.send({ from: FROM, to, subject, html })
+  if (error) throw new Error(error.message)
+}
 
 export function generateOTP(): string {
   return crypto.randomInt(100000, 999999).toString()
@@ -37,47 +31,42 @@ export async function sendEmailOTP(email: string): Promise<void> {
   console.log(`OTP registo para ${email}: ${code}`)
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n')
 
-  await transporter.sendMail({
-    from:    '"Dynamic Works" <' + process.env.GMAIL_USER + '>',
-    to:      email,
-    subject: 'Verificacao de conta - Dynamic Works',
-    html: `
-      <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;
-                  background:#080A0E;color:#E8EDF5;padding:40px;border-radius:16px;">
-        ${emailHeader(EMAIL_ICONS.shield, 'Verificacao de conta')}
+  await sendMail(email, 'Verificacao de conta - Dynamic Works', `
+    <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;
+                background:#080A0E;color:#E8EDF5;padding:40px;border-radius:16px;">
+      ${emailHeader(EMAIL_ICONS.shield, 'Verificacao de conta')}
 
-        <h2 style="font-size:18px;color:#E8EDF5;margin-bottom:8px;">
-          Codigo de verificacao
-        </h2>
-        <p style="color:#6B7A95;margin-bottom:24px;">
-          Use este codigo para verificar a sua conta.
-          Valido por <strong style="color:#E8EDF5;">10 minutos</strong>.
+      <h2 style="font-size:18px;color:#E8EDF5;margin-bottom:8px;">
+        Codigo de verificacao
+      </h2>
+      <p style="color:#6B7A95;margin-bottom:24px;">
+        Use este codigo para verificar a sua conta.
+        Valido por <strong style="color:#E8EDF5;">10 minutos</strong>.
+      </p>
+
+      <div style="background:#161B24;border:1px solid rgba(255,255,255,0.07);
+                  border-radius:12px;padding:28px;text-align:center;margin-bottom:24px;">
+        <p style="color:#6B7A95;font-size:11px;letter-spacing:2px;
+                  text-transform:uppercase;margin:0 0 12px;">Codigo de verificacao</p>
+        <div style="font-size:44px;font-weight:bold;letter-spacing:14px;
+                    color:#CC2B2B;font-family:Courier,monospace;">
+          ${code}
+        </div>
+        <p style="color:#6B7A95;font-size:12px;margin:12px 0 0;">
+          Valido por 10 minutos
         </p>
-
-        <div style="background:#161B24;border:1px solid rgba(255,255,255,0.07);
-                    border-radius:12px;padding:28px;text-align:center;margin-bottom:24px;">
-          <p style="color:#6B7A95;font-size:11px;letter-spacing:2px;
-                    text-transform:uppercase;margin:0 0 12px;">Codigo de verificacao</p>
-          <div style="font-size:44px;font-weight:bold;letter-spacing:14px;
-                      color:#CC2B2B;font-family:Courier,monospace;">
-            ${code}
-          </div>
-          <p style="color:#6B7A95;font-size:12px;margin:12px 0 0;">
-            Valido por 10 minutos
-          </p>
-        </div>
-
-        <div style="background:#1E2535;border-radius:8px;padding:14px;margin-bottom:24px;">
-          <p style="color:#6B7A95;font-size:12px;margin:0;">
-            Nao partilhe este codigo com ninguem.
-            Se nao foi voce, ignore este email.
-          </p>
-        </div>
-
-        ${emailFooter()}
       </div>
-    `,
-  })
+
+      <div style="background:#1E2535;border-radius:8px;padding:14px;margin-bottom:24px;">
+        <p style="color:#6B7A95;font-size:12px;margin:0;">
+          Nao partilhe este codigo com ninguem.
+          Se nao foi voce, ignore este email.
+        </p>
+      </div>
+
+      ${emailFooter()}
+    </div>
+  `)
 
   console.log('Email OTP enviado para', email)
 }
@@ -133,65 +122,60 @@ export async function sendTransactionOTP(
   console.log(`OTP ${typeText} para ${email}: ${code}`)
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n')
 
-  await transporter.sendMail({
-    from:    '"Dynamic Works" <' + process.env.GMAIL_USER + '>',
-    to:      email,
-    subject: `Confirmar ${typeText} - Dynamic Works`,
-    html: `
-      <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;
-                  background:#080A0E;color:#E8EDF5;padding:40px;border-radius:16px;">
-        ${emailHeader(iconSvg, `Confirmar ${typeText}`)}
+  await sendMail(email, `Confirmar ${typeText} - Dynamic Works`, `
+    <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;
+                background:#080A0E;color:#E8EDF5;padding:40px;border-radius:16px;">
+      ${emailHeader(iconSvg, `Confirmar ${typeText}`)}
 
-        <h2 style="color:${typeColor};font-size:18px;margin-bottom:8px;">
-          Confirmar ${typeText}
-        </h2>
-        <p style="color:#E8EDF5;margin-bottom:4px;">
-          Ola, <strong>${name}</strong>!
-        </p>
-        <p style="color:#6B7A95;margin-bottom:24px;">
-          Foi solicitado um ${typeText.toLowerCase()} de
-          <strong style="color:#E8EDF5;">${amountFmt}</strong>.
-          Use o codigo abaixo para confirmar.
-        </p>
+      <h2 style="color:${typeColor};font-size:18px;margin-bottom:8px;">
+        Confirmar ${typeText}
+      </h2>
+      <p style="color:#E8EDF5;margin-bottom:4px;">
+        Ola, <strong>${name}</strong>!
+      </p>
+      <p style="color:#6B7A95;margin-bottom:24px;">
+        Foi solicitado um ${typeText.toLowerCase()} de
+        <strong style="color:#E8EDF5;">${amountFmt}</strong>.
+        Use o codigo abaixo para confirmar.
+      </p>
 
-        <div style="background:#161B24;border:1px solid rgba(255,255,255,0.07);
-                    border-radius:12px;padding:28px;text-align:center;margin-bottom:24px;">
-          <p style="color:#6B7A95;font-size:11px;letter-spacing:2px;
-                    text-transform:uppercase;margin:0 0 12px;">Codigo de confirmacao</p>
-          <div style="font-size:44px;font-weight:bold;letter-spacing:14px;
-                      color:${typeColor};font-family:Courier,monospace;">
-            ${code}
-          </div>
-          <p style="color:#6B7A95;font-size:12px;margin:12px 0 0;">
-            Valido por 10 minutos
-          </p>
+      <div style="background:#161B24;border:1px solid rgba(255,255,255,0.07);
+                  border-radius:12px;padding:28px;text-align:center;margin-bottom:24px;">
+        <p style="color:#6B7A95;font-size:11px;letter-spacing:2px;
+                  text-transform:uppercase;margin:0 0 12px;">Codigo de confirmacao</p>
+        <div style="font-size:44px;font-weight:bold;letter-spacing:14px;
+                    color:${typeColor};font-family:Courier,monospace;">
+          ${code}
         </div>
-
-        <div style="background:#1E2535;border-radius:8px;padding:14px;margin-bottom:24px;">
-          <table cellpadding="0" cellspacing="0" border="0" width="100%">
-            <tr>
-              <td style="vertical-align:top;padding-right:10px;width:24px;">
-                ${EMAIL_ICONS.warning}
-              </td>
-              <td style="vertical-align:middle;">
-                <p style="color:#6B7A95;font-size:12px;margin:0;">
-                  Se nao foi voce a solicitar esta transacao,
-                  ignore este email e contacte o suporte imediatamente.
-                </p>
-              </td>
-            </tr>
-          </table>
-        </div>
-
-        <p style="color:#6B7A95;font-size:13px;text-align:center;">
-          Nao partilhe este codigo com ninguem.<br/>
-          A Dynamic Works nunca pede codigos por telefone.
+        <p style="color:#6B7A95;font-size:12px;margin:12px 0 0;">
+          Valido por 10 minutos
         </p>
-
-        ${emailFooter()}
       </div>
-    `,
-  })
+
+      <div style="background:#1E2535;border-radius:8px;padding:14px;margin-bottom:24px;">
+        <table cellpadding="0" cellspacing="0" border="0" width="100%">
+          <tr>
+            <td style="vertical-align:top;padding-right:10px;width:24px;">
+              ${EMAIL_ICONS.warning}
+            </td>
+            <td style="vertical-align:middle;">
+              <p style="color:#6B7A95;font-size:12px;margin:0;">
+                Se nao foi voce a solicitar esta transacao,
+                ignore este email e contacte o suporte imediatamente.
+              </p>
+            </td>
+          </tr>
+        </table>
+      </div>
+
+      <p style="color:#6B7A95;font-size:13px;text-align:center;">
+        Nao partilhe este codigo com ninguem.<br/>
+        A Dynamic Works nunca pede codigos por telefone.
+      </p>
+
+      ${emailFooter()}
+    </div>
+  `)
 
   return code
 }
@@ -260,33 +244,31 @@ export async function sendStatusEmail(
 
   const cfg = configs[status]
 
-  await transporter.sendMail({
-    from:    '"Dynamic Works" <' + process.env.GMAIL_USER + '>',
-    to:      email,
-    subject: cfg.subject,
-    html: `
-      <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;
-                  background:#080A0E;color:#E8EDF5;padding:40px;border-radius:16px;">
-        ${emailHeader(cfg.icon, cfg.title)}
+  await sendMail(email, cfg.subject, `
+    <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;
+                background:#080A0E;color:#E8EDF5;padding:40px;border-radius:16px;">
+      ${emailHeader(cfg.icon, cfg.title)}
 
-        <h2 style="font-size:20px;color:${cfg.color};margin-bottom:16px;">
-          ${cfg.title}
-        </h2>
-        <p style="color:#E8EDF5;margin-bottom:12px;">
-          Ola, <strong>${name}</strong>!
-        </p>
-        <p style="color:#6B7A95;margin-bottom:12px;">${cfg.message}</p>
-        ${cfg.extra ? `
-          <div style="background:#161B24;border-radius:8px;padding:14px;margin-bottom:16px;">
-            <p style="color:#E8EDF5;font-size:14px;margin:0;">${cfg.extra}</p>
-          </div>
-        ` : ''}
-        <p style="color:#6B7A95;">${cfg.action}</p>
+      <h2 style="font-size:20px;color:${cfg.color};margin-bottom:16px;">
+        ${cfg.title}
+      </h2>
+      <p style="color:#E8EDF5;margin-bottom:12px;">
+        Ola, <strong>${name}</strong>!
+      </p>
+      <p style="color:#6B7A95;margin-bottom:12px;">${cfg.message}</p>
+      ${cfg.extra ? `
+        <div style="background:#161B24;border-radius:8px;padding:14px;margin-bottom:16px;">
+          <p style="color:#E8EDF5;font-size:14px;margin:0;">${cfg.extra}</p>
+        </div>
+      ` : ''}
+      <p style="color:#6B7A95;">${cfg.action}</p>
 
-        ${emailFooter()}
-      </div>
-    `,
-  })
+      ${emailFooter()}
+    </div>
+  `)
 
   console.log('Email de estado enviado para', email, '(', status, ')')
 }
+
+/* ─── Email simples (KYC aprovação/rejeição) ───────────────── */
+export { sendMail }
