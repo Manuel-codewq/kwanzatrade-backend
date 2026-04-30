@@ -1,9 +1,14 @@
 import axios from 'axios'
+import qs from 'qs'
 
-const BASE_URL    = process.env.APPYPAY_BASE_URL!
-const CLIENT_ID   = process.env.APPYPAY_CLIENT_ID!
-const SECRET      = process.env.APPYPAY_CLIENT_SECRET!
-const PAY_METHOD  = process.env.APPYPAY_PAYMENT_METHOD_ID!
+const BASE_URL   = process.env.APPYPAY_BASE_URL!
+const CLIENT_ID  = process.env.APPYPAY_CLIENT_ID!
+const SECRET     = process.env.APPYPAY_CLIENT_SECRET!
+const PAY_METHOD = process.env.APPYPAY_PAYMENT_METHOD_ID!
+const RESOURCE   = process.env.APPYPAY_RESOURCE!
+
+// Token via Azure AD OAuth2
+const TOKEN_URL = 'https://login.microsoftonline.com/appypay.onmicrosoft.com/oauth2/token'
 
 let cachedToken: string | null = null
 let tokenExpiry: Date   | null = null
@@ -12,9 +17,17 @@ async function getToken(): Promise<string> {
   if (cachedToken && tokenExpiry && new Date() < tokenExpiry) return cachedToken
 
   const res = await axios.post(
-    `${BASE_URL}/v1/gateway/token`,
-    { client_id: CLIENT_ID, client_secret: SECRET, grant_type: 'client_credentials' },
-    { headers: { 'Content-Type': 'application/json' }, timeout: 15000 }
+    TOKEN_URL,
+    qs.stringify({
+      grant_type:    'client_credentials',
+      client_id:     CLIENT_ID,
+      client_secret: SECRET,
+      resource:      RESOURCE,
+    }),
+    {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      timeout: 15000,
+    }
   )
 
   cachedToken = res.data.access_token as string
@@ -37,7 +50,7 @@ export async function createCharge({
   const token = await getToken()
 
   const res = await axios.post(
-    `${BASE_URL}/v1/gateway/charges`,
+    `${BASE_URL}/charges`,
     {
       amount,
       currency:              'AOA',
@@ -60,7 +73,7 @@ export async function getCharge(merchantTransactionId: string) {
   const token = await getToken()
 
   const res = await axios.get(
-    `${BASE_URL}/v1/gateway/charges/${merchantTransactionId}`,
+    `${BASE_URL}/charges/${merchantTransactionId}`,
     { headers: { Authorization: `Bearer ${token}` }, timeout: 10000 }
   )
 
