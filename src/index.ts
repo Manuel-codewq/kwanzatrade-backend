@@ -19,8 +19,19 @@ import { generalLimiter, authLimiter } from './middleware/rateLimit'
 const app        = express()
 const httpServer = createServer(app)
 const io         = new Server(httpServer, {
-  cors: { origin: process.env.CLIENT_URL, credentials: true },
+  cors: {
+    origin: [
+      'http://localhost:5173',
+      'http://localhost:4173',
+      'https://dynamicworks.up.railway.app',
+      process.env.CLIENT_URL || '',
+    ].filter(Boolean),
+    credentials: true,
+  },
 })
+
+// Necessário para Railway, Render e outros proxies
+app.set('trust proxy', 1)
 
 /* ── middleware ── */
 app.use(helmet({
@@ -36,7 +47,15 @@ app.use(helmet({
     }
   }
 }))
-app.use(cors({ origin: process.env.CLIENT_URL, credentials: true }))
+app.use(cors({
+  origin: [
+    'http://localhost:5173',
+    'http://localhost:4173',
+    'https://dynamicworks.up.railway.app',
+    process.env.CLIENT_URL || '',
+  ].filter(Boolean),
+  credentials: true,
+}))
 app.use(morgan('dev'))
 app.use(express.json())
 app.use(generalLimiter)

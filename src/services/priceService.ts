@@ -3,11 +3,11 @@ import { prisma } from '../prisma/client'
 
 const TWELVEDATA_KEY = process.env.TWELVEDATA_API_KEY
 
-const SYMBOLS = ['XAU/USD', 'UKOIL', 'EUR/USD', 'GBP/USD', 'USD/JPY', 'USD/CHF']
+const SYMBOLS = ['XAU/USD', 'BZ=F', 'EUR/USD', 'GBP/USD', 'USD/JPY', 'USD/CHF']
 
 const SYMBOL_MAP: Record<string, string> = {
   'XAU/USD': 'XAUUSD',
-  'UKOIL':   'UKOIL',
+  'BZ=F':    'UKOIL',
   'EUR/USD': 'EURUSD',
   'GBP/USD': 'GBPUSD',
   'USD/JPY': 'USDJPY',
@@ -109,6 +109,7 @@ export async function fetchAndUpdatePrices(): Promise<void> {
     }
 
     let updated = 0
+    const updatedSymbols: string[] = []
     for (const [apiSymbol, internalSymbol] of Object.entries(SYMBOL_MAP)) {
       const raw = data[apiSymbol] || data[internalSymbol]
       const price = raw?.price ? parseFloat(raw.price) : null
@@ -119,6 +120,7 @@ export async function fetchAndUpdatePrices(): Promise<void> {
       }
 
       priceCache[internalSymbol] = price
+      updatedSymbols.push(internalSymbol)
 
       const spread = getSpread(internalSymbol)
       await prisma.marketPrice.upsert({
@@ -127,6 +129,30 @@ export async function fetchAndUpdatePrices(): Promise<void> {
         create: { symbol: internalSymbol, price, bid: price - spread / 2, ask: price + spread / 2, spread, source: 'twelvedata' },
       })
       updated++
+    }
+
+    // Busca UKOIL separadamente se não veio no batch (BZ=F pode não estar disponível)
+    if (!updatedSymbols.includes('UKOIL')) {
+      try {
+        const oilRes = await axios.get('https://api.twelvedata.com/price', {
+          params: { symbol: 'UKOIL', apikey: TWELVEDATA_KEY },
+          timeout: 10000,
+        })
+        const oilPrice = parseFloat(oilRes.data?.price)
+        if (oilPrice > 0) {
+          priceCache['UKOIL'] = oilPrice
+          const spread = getSpread('UKOIL')
+          await prisma.marketPrice.upsert({
+            where:  { symbol: 'UKOIL' },
+            update: { price: oilPrice, bid: oilPrice - spread / 2, ask: oilPrice + spread / 2, spread, source: 'twelvedata' },
+            create: { symbol: 'UKOIL', price: oilPrice, bid: oilPrice - spread / 2, ask: oilPrice + spread / 2, spread, source: 'twelvedata' },
+          })
+          console.log('✅ UKOIL actualizado:', oilPrice)
+          updated++
+        }
+      } catch {
+        console.warn('⚠️ UKOIL não disponível, mantém último preço')
+      }
     }
 
     updateAOAPairs()
