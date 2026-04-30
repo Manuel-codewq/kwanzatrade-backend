@@ -14,6 +14,7 @@ import userRoutes    from './routes/user'
 import adminRoutes   from './routes/admin'
 import { startPriceSocket } from './websocket/priceSocket'
 import { loadLastPrices, fetchAndUpdatePrices } from './services/priceService'
+import { derivService } from './services/derivService'
 import { generalLimiter, authLimiter } from './middleware/rateLimit'
 
 const app        = express()

@@ -110,7 +110,11 @@ export async function fetchAndUpdatePrices(): Promise<void> {
 
     let updated = 0
     const updatedSymbols: string[] = []
+    const DERIV_SYMBOLS = ['EURUSD', 'GBPUSD', 'USDJPY', 'USDCHF', 'XAUUSD']
+
     for (const [apiSymbol, internalSymbol] of Object.entries(SYMBOL_MAP)) {
+      if (DERIV_SYMBOLS.includes(internalSymbol)) continue
+
       const raw = data[apiSymbol] || data[internalSymbol]
       const price = raw?.price ? parseFloat(raw.price) : null
 
