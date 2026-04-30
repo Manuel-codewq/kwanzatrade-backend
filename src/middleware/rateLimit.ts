@@ -22,12 +22,12 @@ export const authenticatedLimiter = rateLimit({
   message: { error: 'Limite de pedidos atingido. Aguarde 1 minuto.' },
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req: any) => req.userId || req.ip,
+  keyGenerator: (req) => (req as { userId?: string }).userId || (req.ip ?? 'unknown'),
 })
 
 export const tradingLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: process.env.NODE_ENV === 'production' ? 10 : 100,
   message: { error: 'Muitas ordens em pouco tempo. Aguarde.' },
-  keyGenerator: (req: any) => req.userId || req.ip,
+  keyGenerator: (req) => (req as { userId?: string }).userId || (req.ip ?? 'unknown'),
 })

@@ -122,7 +122,8 @@ export async function sendTransactionOTP(
   console.log(`OTP ${typeText} para ${email}: ${code}`)
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n')
 
-  await sendMail(email, `Confirmar ${typeText} - Dynamic Works`, `
+  // Email não é fatal — OTP já está guardado na BD e nos logs
+  sendMail(email, `Confirmar ${typeText} - Dynamic Works`, `
     <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;
                 background:#080A0E;color:#E8EDF5;padding:40px;border-radius:16px;">
       ${emailHeader(iconSvg, `Confirmar ${typeText}`)}
@@ -175,7 +176,7 @@ export async function sendTransactionOTP(
 
       ${emailFooter()}
     </div>
-  `)
+  `).catch(err => console.error('❌ Email OTP transação falhou:', err.message))
 
   return code
 }
