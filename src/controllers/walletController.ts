@@ -7,13 +7,11 @@ import { createCharge } from '../services/appypayService'
 /* GET /api/wallet/balance */
 export async function getBalance(req: AuthRequest, res: Response): Promise<void> {
   try {
-    const account = await prisma.tradingAccount.findUnique({
-      where: { userId: req.userId! },
+    const account = await prisma.tradingAccount.upsert({
+      where:  { userId: req.userId! },
+      update: {},
+      create: { userId: req.userId!, balance: 0, currency: 'USD' },
     })
-    if (!account) {
-      res.status(404).json({ error: 'Conta não encontrada' })
-      return
-    }
     res.json({ balance: account.balance, currency: account.currency })
   } catch {
     res.status(500).json({ error: 'Erro interno' })
