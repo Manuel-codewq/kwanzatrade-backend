@@ -1,6 +1,6 @@
 import WebSocket from 'ws'
+import { Server } from 'socket.io'
 import { priceCache, getPriceWithSpread } from './priceService'
-import { io } from '../index'
 
 const APP_ID = process.env.DERIV_APP_ID || '127916'
 const DERIV_WS_URL = `wss://ws.derivws.com/websockets/v3?app_id=${APP_ID}`
@@ -21,6 +21,11 @@ class DerivService {
   private ws: WebSocket | null = null
   private reconnectInterval = 5000
   private pingInterval: NodeJS.Timeout | null = null
+  private io: Server | null = null
+
+  setIO(io: Server) {
+    this.io = io
+  }
 
   constructor() {
     this.connect()
@@ -54,11 +59,11 @@ class DerivService {
             
             // Emite actualização imediata para o frontend
             const updated = getPriceWithSpread(internalSymbol)
-            if (updated) {
-              io.emit('price_update', [{
+            if (updated && this.io) {
+              this.io.emit('price_update', [{
                 ...updated,
                 marketType: 'REAL',
-                changePct: 0 // Simplificado
+                changePct: 0,
               }])
             }
           }

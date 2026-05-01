@@ -79,6 +79,7 @@ app.get('/health', (_, res) => {
 
 /* ── websocket preços ── */
 startPriceSocket(io)
+derivService.setIO(io)
 
 /* ── arranque ── */
 const PORT = process.env.PORT ?? 3001
