@@ -19,6 +19,8 @@ import {
   blockClient,
   activateClient,
   deleteClient,
+  getBrokerConfigRoute,
+  getRevenue,
 } from '../controllers/adminController'
 
 const router = Router()
@@ -39,6 +41,8 @@ router.post('/transactions/:id/confirm', confirmTransaction)
 router.post('/transactions/:id/reject',  rejectTransaction)
 router.get('/settings',                  getSettings)
 router.post('/settings',                 updateSettings)
+router.get('/broker-config',             getBrokerConfigRoute)
+router.get('/revenue',                   getRevenue)
 router.post('/clients/:id/suspend',      suspendClient)
 router.post('/clients/:id/block',        blockClient)
 router.post('/clients/:id/activate',     activateClient)

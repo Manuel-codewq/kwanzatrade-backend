@@ -1,39 +1,125 @@
 import { Server } from 'socket.io'
 import { priceCache, getSpread } from '../services/priceService'
+import { BROKER_CONFIG, OTC_SYMBOLS, isInternalMarket, isWeekend } from '../config/brokerConfig'
+import { prisma } from '../prisma/client'
 
-function isInternalMarket(): boolean {
-  const hour = new Date().getHours()
-  return hour >= 20 || hour < 8
+let spreadMultiplier = 1.0
+let otcPrices: Record<string, number> = {}
+
+async function loadSettings() {
+  try {
+    const s = await prisma.brokerSettings.findFirst()
+    if (s) spreadMultiplier = s.spreadMultiplier
+  } catch {}
 }
 
-/**
- * startPriceSocket handles the initial connection and snapshot of prices.
- * Real-time updates are now emitted directly from DerivService when ticks arrive.
- */
-export function startPriceSocket(io: Server) {
-  io.on('connection', (socket) => {
-    console.log('🔌 Cliente conectado:', socket.id)
+async function initOTCPrices() {
+  try {
+    const dbPrices = await prisma.marketPrice.findMany()
+    dbPrices.forEach(p => {
+      const otcKey = p.symbol + '_OTC'
+      if (OTC_SYMBOLS[otcKey]) otcPrices[otcKey] = p.price
+    })
+  } catch {}
+  Object.entries(OTC_SYMBOLS).forEach(([otcSymbol, cfg]) => {
+    if (!otcPrices[otcSymbol] && priceCache[cfg.baseSymbol]) {
+      otcPrices[otcSymbol] = priceCache[cfg.baseSymbol]
+    }
+  })
+}
 
-    // Envia o estado actual de todos os preços ao conectar
-    const current = Object.keys(priceCache).map(symbol => {
-      const price  = priceCache[symbol]
-      const spread = getSpread(symbol)
-      return {
-        symbol,
-        price,
+function buildSnapshot(weekend: boolean) {
+  const items: object[] = Object.keys(priceCache).map(symbol => {
+    const price  = priceCache[symbol]
+    const spread = getSpread(symbol) * spreadMultiplier
+    return {
+      symbol,
+      price,
+      bid:        +(price - spread / 2),
+      ask:        +(price + spread / 2),
+      spread,
+      marketType: weekend ? 'CLOSED' : isInternalMarket() ? 'INTERNAL' : 'REAL',
+      isWeekend:  weekend,
+      changePct:  0,
+      isOTC:      false,
+    }
+  })
+  if (weekend) {
+    Object.entries(OTC_SYMBOLS).forEach(([otcSymbol, cfg]) => {
+      const price  = otcPrices[otcSymbol] || priceCache[cfg.baseSymbol] || 1
+      const spread = cfg.spread * spreadMultiplier
+      items.push({
+        symbol:     otcSymbol,
+        price:      +price.toFixed(5),
         bid:        +(price - spread / 2),
         ask:        +(price + spread / 2),
         spread,
-        marketType: isInternalMarket() ? 'INTERNAL' : 'REAL',
-        changePct:  0
-      }
+        changePct:  0,
+        marketType: 'OTC',
+        isWeekend:  true,
+        isOTC:      true,
+      })
     })
-    socket.emit('prices_snapshot', current)
+  }
+  return items
+}
 
-    socket.on('disconnect', () => {
-      console.log('🔌 Cliente desconectado:', socket.id)
-    })
+export function startPriceSocket(io: Server) {
+  loadSettings()
+  setInterval(loadSettings, 5 * 60 * 1000)
+  setTimeout(initOTCPrices, 2000)
+
+  io.on('connection', (socket) => {
+    console.log('🔌 Cliente conectado:', socket.id)
+    socket.emit('prices_snapshot', buildSnapshot(isWeekend()))
+    socket.on('disconnect', () => console.log('🔌 Cliente desconectado:', socket.id))
   })
 
-  console.log('📡 WebSocket de preços iniciado (Apenas dados Reais da Deriv)')
+  // Weekend simulation: regular + OTC pairs
+  setInterval(() => {
+    if (!isWeekend()) return
+
+    const updates: object[] = Object.keys(priceCache).map(symbol => {
+      const config   = BROKER_CONFIG[symbol]
+      const spread   = (config?.spread ?? getSpread(symbol)) * spreadMultiplier
+      const movement = (Math.random() - 0.5) * (priceCache[symbol] ?? 1) * 0.00005
+
+      priceCache[symbol] = Math.max(0.0001, (priceCache[symbol] ?? 1) + movement)
+      const price = priceCache[symbol]
+      return {
+        symbol,
+        price:      +price.toFixed(5),
+        bid:        +(price - spread / 2),
+        ask:        +(price + spread / 2),
+        spread,
+        changePct:  +(movement / price * 100).toFixed(4),
+        marketType: 'CLOSED',
+        isWeekend:  true,
+        isOTC:      false,
+      }
+    })
+
+    Object.entries(OTC_SYMBOLS).forEach(([otcSymbol, cfg]) => {
+      const basePrice = priceCache[cfg.baseSymbol] || otcPrices[otcSymbol] || 1
+      const movement  = (Math.random() - 0.495) * basePrice * 0.0008
+      otcPrices[otcSymbol] = Math.max(0.0001, (otcPrices[otcSymbol] || basePrice) + movement)
+      const price  = otcPrices[otcSymbol]
+      const spread = cfg.spread * spreadMultiplier
+      updates.push({
+        symbol:     otcSymbol,
+        price:      +price.toFixed(5),
+        bid:        +(price - spread / 2),
+        ask:        +(price + spread / 2),
+        spread,
+        changePct:  +(movement / basePrice * 100).toFixed(4),
+        marketType: 'OTC',
+        isWeekend:  true,
+        isOTC:      true,
+      })
+    })
+
+    io.emit('price_update', updates)
+  }, 1500)
+
+  console.log('📡 WebSocket de preços iniciado')
 }

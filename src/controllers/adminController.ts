@@ -1,6 +1,7 @@
 import { Request, Response } from 'express'
 import { prisma } from '../prisma/client'
 import { sendStatusEmail, sendMail } from '../services/emailService'
+import { BROKER_CONFIG } from '../config/brokerConfig'
 
 /* GET /api/admin/stats */
 export async function getStats(_req: Request, res: Response): Promise<void> {
@@ -361,17 +362,105 @@ export async function deleteClient(req: Request, res: Response): Promise<void> {
 
 /* GET /api/admin/settings */
 export async function getSettings(_req: Request, res: Response): Promise<void> {
-  res.json({
-    spreads:             { XAUUSD: 0.50, UKOIL: 0.05, EURUSD: 0.0002, GBPUSD: 0.0003 },
-    maxLeverage:         100,
-    minDepositKz:        5000,
-    internalMarketStart: '20:00',
-    internalMarketEnd:   '08:00',
-    maintenanceMode:     false,
-  })
+  try {
+    const db = await prisma.brokerSettings.findFirst()
+    const s  = db ?? {
+      minDeposit: 5000, maxLeverage: 100, internalStart: 20, internalEnd: 8,
+      maintenance: false, bnaRate: 925, spreadMultiplier: 1.0,
+    }
+    res.json({
+      spreads:             { XAUUSD: 0.45, UKOIL: 0.04, EURUSD: 0.00015, GBPUSD: 0.00018 },
+      maxLeverage:         s.maxLeverage,
+      minDepositKz:        s.minDeposit,
+      internalMarketStart: `${String(s.internalStart).padStart(2, '0')}:00`,
+      internalMarketEnd:   `${String(s.internalEnd).padStart(2, '0')}:00`,
+      maintenanceMode:     s.maintenance,
+      bnaRate:             s.bnaRate,
+      spreadMultiplier:    s.spreadMultiplier,
+    })
+  } catch (err: unknown) {
+    console.error('getSettings error:', err)
+    res.status(500).json({ error: 'Erro interno' })
+  }
 }
 
 /* POST /api/admin/settings */
-export async function updateSettings(_req: Request, res: Response): Promise<void> {
-  res.json({ message: 'Configurações guardadas com sucesso' })
+export async function updateSettings(req: Request, res: Response): Promise<void> {
+  try {
+    const {
+      maxLeverage, minDepositKz, internalMarketStart, internalMarketEnd,
+      maintenanceMode, bnaRate, spreadMultiplier,
+    } = req.body as {
+      maxLeverage: number; minDepositKz: number
+      internalMarketStart: string; internalMarketEnd: string
+      maintenanceMode: boolean; bnaRate: number; spreadMultiplier: number
+    }
+
+    const internalStart = parseInt(internalMarketStart?.split(':')[0] ?? '20')
+    const internalEnd   = parseInt(internalMarketEnd?.split(':')[0] ?? '8')
+
+    const settings = await prisma.brokerSettings.upsert({
+      where:  { id: 1 },
+      update: {
+        maxLeverage, minDeposit: minDepositKz, internalStart, internalEnd,
+        maintenance: maintenanceMode, bnaRate, spreadMultiplier,
+      },
+      create: {
+        id: 1, maxLeverage, minDeposit: minDepositKz, internalStart, internalEnd,
+        maintenance: maintenanceMode, bnaRate, spreadMultiplier,
+      },
+    })
+    res.json({ message: 'Configurações guardadas!', settings })
+  } catch (err: unknown) {
+    console.error('updateSettings error:', err)
+    res.status(500).json({ error: 'Erro interno' })
+  }
+}
+
+/* GET /api/admin/broker-config */
+export async function getBrokerConfigRoute(_req: Request, res: Response): Promise<void> {
+  try {
+    const settings   = await prisma.brokerSettings.findFirst()
+    const multiplier = settings?.spreadMultiplier ?? 1.0
+    const enriched   = Object.fromEntries(
+      Object.entries(BROKER_CONFIG).map(([symbol, cfg]) => [
+        symbol,
+        {
+          ...cfg,
+          spreadOriginal:   cfg.spread,
+          spreadActual:     +(cfg.spread * multiplier).toFixed(7),
+          spreadMultiplier: multiplier,
+        },
+      ])
+    )
+    res.json(enriched)
+  } catch (err: unknown) {
+    console.error('getBrokerConfigRoute error:', err)
+    res.status(500).json({ error: 'Erro interno' })
+  }
+}
+
+/* GET /api/admin/revenue */
+export async function getRevenue(_req: Request, res: Response): Promise<void> {
+  try {
+    const [entries, totals] = await Promise.all([
+      prisma.brokerRevenue.findMany({
+        include: { user: { select: { fullName: true, email: true } } },
+        orderBy: { createdAt: 'desc' },
+        take: 100,
+      }),
+      prisma.brokerRevenue.groupBy({
+        by: ['type'],
+        _sum: { amount: true },
+        _count: true,
+      }),
+    ])
+
+    const total = totals.reduce((s, t) => s + (t._sum.amount ?? 0), 0)
+
+    res.json({ entries, totals, total })
+  } catch (err: unknown) {
+    console.error('getRevenue error:', err)
+    res.status(500).json({ error: 'Erro interno' })
+  }
 }
