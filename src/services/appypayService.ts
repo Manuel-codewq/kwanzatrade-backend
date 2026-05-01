@@ -7,8 +7,7 @@ const SECRET     = process.env.APPYPAY_CLIENT_SECRET!
 const PAY_METHOD = process.env.APPYPAY_PAYMENT_METHOD_ID!
 const RESOURCE   = process.env.APPYPAY_RESOURCE
 
-// Token via Azure AD OAuth2
-const TOKEN_URL = 'https://login.microsoftonline.com/appypay.onmicrosoft.com/oauth2/token'
+const TOKEN_URL = process.env.APPYPAY_TOKEN_URL || 'https://login.microsoftonline.com/appypay.onmicrosoft.com/oauth2/token'
 
 let cachedToken: string | null = null
 let tokenExpiry: Date   | null = null
