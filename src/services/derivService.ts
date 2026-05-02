@@ -19,11 +19,34 @@ const SYMBOL_MAP: Record<string, string> = {
   'oil_brent': 'UKOIL',
 }
 
+const OTC_BASES: Record<string, number> = {
+  'EURUSD_OTC': 1.0842,
+  'GBPUSD_OTC': 1.2734,
+  'USDJPY_OTC': 149.50,
+  'USDCHF_OTC': 0.8923,
+  'AUDUSD_OTC': 0.6542,
+  'USDCAD_OTC': 1.3521,
+  'XAUUSD_OTC': 2341.50,
+  'UKOIL_OTC':  82.45,
+}
+
+const OTC_MAP: Record<string, string> = {
+  'R_10': 'EURUSD_OTC',
+  'R_25': 'GBPUSD_OTC',
+  'R_50': 'USDJPY_OTC',
+  'R_75': 'USDCHF_OTC',
+  'R_100': 'AUDUSD_OTC',
+  '1HZ10V': 'USDCAD_OTC',
+  '1HZ25V': 'XAUUSD_OTC',
+  '1HZ50V': 'UKOIL_OTC',
+}
+
 class DerivService {
   private ws: WebSocket | null = null
   private reconnectInterval = 5000
   private pingInterval: NodeJS.Timeout | null = null
   private io: Server | null = null
+  private initialTicks: Record<string, number> = {}
 
   setIO(io: Server) {
     this.io = io
@@ -54,10 +77,24 @@ class DerivService {
 
         if (response.msg_type === 'tick') {
           const { symbol, quote } = response.tick
-          const internalSymbol = SYMBOL_MAP[symbol]
+          const quoteVal = parseFloat(quote)
+          
+          let internalSymbol = SYMBOL_MAP[symbol]
+          let finalPrice = quoteVal
+
+          if (!internalSymbol && OTC_MAP[symbol]) {
+            internalSymbol = OTC_MAP[symbol]
+            
+            // Lógica de mascarar preço sintético -> Forex base
+            if (!this.initialTicks[symbol]) {
+              this.initialTicks[symbol] = quoteVal
+            }
+            const percentChange = (quoteVal - this.initialTicks[symbol]) / this.initialTicks[symbol]
+            finalPrice = OTC_BASES[internalSymbol] * (1 + percentChange)
+          }
 
           if (internalSymbol) {
-            priceCache[internalSymbol] = parseFloat(quote)
+            priceCache[internalSymbol] = finalPrice
             
             // Emite actualização imediata para o frontend
             const updated = getPriceWithSpread(internalSymbol)
@@ -150,12 +187,13 @@ class DerivService {
   private subscribe() {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return
 
-    Object.keys(SYMBOL_MAP).forEach(derivSymbol => {
+    const symbols = [...Object.keys(SYMBOL_MAP), ...Object.keys(OTC_MAP)]
+    symbols.forEach(derivSymbol => {
       this.ws?.send(JSON.stringify({
         ticks: derivSymbol
       }))
     })
-    console.log('📡 Subscrito aos ticks da Deriv:', Object.keys(SYMBOL_MAP).join(', '))
+    console.log('📡 Subscrito aos ticks da Deriv:', symbols.join(', '))
   }
 
   private startHeartbeat() {
