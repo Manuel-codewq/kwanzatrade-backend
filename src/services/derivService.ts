@@ -1,6 +1,8 @@
 import WebSocket from 'ws'
 import { Server } from 'socket.io'
 import { priceCache, getPriceWithSpread } from './priceService'
+import { prisma } from '../prisma/client'
+import { closePositionLogic } from './tradingService'
 
 const APP_ID = process.env.DERIV_APP_ID || '127916'
 const DERIV_WS_URL = `wss://ws.derivws.com/websockets/v3?app_id=${APP_ID}`
@@ -66,6 +68,11 @@ class DerivService {
                 changePct: 0,
               }])
             }
+
+            // 2. Execução automática (SL/TP)
+            if (updated) {
+                this.checkExecution(internalSymbol, updated.bid, updated.ask)
+            }
           }
         }
       } catch (err) {
@@ -82,6 +89,62 @@ class DerivService {
     this.ws.on('error', (err) => {
       console.error('❌ Erro no WebSocket da Deriv:', err.message)
     })
+  }
+
+  private async checkExecution(symbol: string, bid: number, ask: number) {
+    try {
+      const orders = await prisma.order.findMany({
+        where: {
+          symbol,
+          status: 'OPEN',
+          OR: [
+            { stopLoss: { not: null } },
+            { takeProfit: { not: null } }
+          ]
+        }
+      })
+
+      for (const order of orders) {
+        let shouldClose = false
+        let triggerPrice = 0
+
+        if (order.side === 'BUY') {
+          if (order.stopLoss && bid <= order.stopLoss) {
+            shouldClose = true
+            triggerPrice = bid
+          } else if (order.takeProfit && bid >= order.takeProfit) {
+            shouldClose = true
+            triggerPrice = bid
+          }
+        } else {
+          if (order.stopLoss && ask >= order.stopLoss) {
+            shouldClose = true
+            triggerPrice = ask
+          } else if (order.takeProfit && ask <= order.takeProfit) {
+            shouldClose = true
+            triggerPrice = ask
+          }
+        }
+
+        if (shouldClose) {
+          console.log(`⚡ EXECUTANDO ${order.side} ${symbol} @ ${triggerPrice} (SL/TP atingido)`)
+          closePositionLogic(order.id, triggerPrice, order.userId)
+            .then(result => {
+              if (this.io) {
+                this.io.emit('order_closed_auto', {
+                  id: order.id,
+                  symbol: order.symbol,
+                  profitLoss: result.profitLoss,
+                  reason: 'SL/TP'
+                })
+              }
+            })
+            .catch(err => console.error(`❌ Falha na execução auto ${order.id}:`, err.message))
+        }
+      }
+    } catch (err: any) {
+      console.error('❌ Erro no checkExecution:', err.message)
+    }
   }
 
   private subscribe() {

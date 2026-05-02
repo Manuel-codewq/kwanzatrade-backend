@@ -7,12 +7,22 @@ import { createCharge } from '../services/appypayService'
 /* GET /api/wallet/balance */
 export async function getBalance(req: AuthRequest, res: Response): Promise<void> {
   try {
-    const account = await prisma.tradingAccount.upsert({
-      where:  { userId: req.userId! },
+    const type = (req.query['type'] as string) === 'DEMO' ? 'DEMO' : 'REAL'
+    
+    let account = await prisma.tradingAccount.upsert({
+      where:  { userId_type: { userId: req.userId!, type } },
       update: {},
-      create: { userId: req.userId!, balance: 0, currency: 'USD' },
+      create: { userId: req.userId!, type, balance: type === 'DEMO' ? 20000 : 0, currency: 'AOA' },
     })
-    res.json({ balance: account.balance, currency: account.currency })
+
+    // Garante que a conta demo tenha saldo se estiver a 0 (migração antiga)
+    if (type === 'DEMO' && account.balance === 0) {
+      account = await prisma.tradingAccount.update({
+        where: { id: account.id },
+        data: { balance: 20000 }
+      })
+    }
+    res.json({ balance: account.balance, currency: account.currency, type: account.type })
   } catch {
     res.status(500).json({ error: 'Erro interno' })
   }
@@ -133,9 +143,11 @@ export async function requestWithdraw(req: AuthRequest, res: Response): Promise<
     const user = await prisma.user.findUnique({ where: { id: req.userId! } })
     if (!user) { res.status(404).json({ error: 'Utilizador não encontrado' }); return }
 
-    const account = await prisma.tradingAccount.findUnique({ where: { userId: req.userId! } })
+    const account = await prisma.tradingAccount.findUnique({ 
+      where: { userId_type: { userId: req.userId!, type: 'REAL' } } 
+    })
     if (!account || account.balance < amount) {
-      res.status(400).json({ error: 'Saldo insuficiente' })
+      res.status(400).json({ error: 'Saldo insuficiente na conta REAL' })
       return
     }
 
@@ -166,14 +178,16 @@ export async function confirmWithdraw(req: AuthRequest, res: Response): Promise<
       return
     }
 
-    const account = await prisma.tradingAccount.findUnique({ where: { userId: req.userId! } })
+    const account = await prisma.tradingAccount.findUnique({ 
+      where: { userId_type: { userId: req.userId!, type: 'REAL' } } 
+    })
     if (!account || account.balance < amount) {
-      res.status(400).json({ error: 'Saldo insuficiente' })
+      res.status(400).json({ error: 'Saldo insuficiente na conta REAL' })
       return
     }
 
     await prisma.tradingAccount.update({
-      where: { userId: req.userId! },
+      where: { userId_type: { userId: req.userId!, type: 'REAL' } },
       data:  { balance: { decrement: amount } },
     })
 

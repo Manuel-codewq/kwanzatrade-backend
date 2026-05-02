@@ -22,7 +22,7 @@ model User {
   status            UserStatus     @default(ACTIVE)
   tutorialCompleted Boolean        @default(false)
 
-  account      TradingAccount?
+  accounts          TradingAccount[]
   transactions Transaction[]
   orders       Order[]
   brokerRevenues BrokerRevenue[]
@@ -49,15 +49,18 @@ model KYCData {
 }
 
 model TradingAccount {
-  id        String   @id @default(uuid())
-  userId    String   @unique
-  balance   Float    @default(0)
-  currency  String   @default("AOA")
-  leverage  Int      @default(100)
-  createdAt DateTime @default(now())
+  id        String      @id @default(uuid())
+  userId    String
+  type      AccountType @default(REAL)
+  balance   Float       @default(0)
+  currency  String      @default("AOA")
+  leverage  Int         @default(100)
+  createdAt DateTime    @default(now())
 
   user   User    @relation(fields: [userId], references: [id])
   orders Order[]
+
+  @@unique([userId, type])
 }
 
 model Order {
@@ -159,6 +162,11 @@ enum KycStatus {
 enum Role {
   CLIENT
   ADMIN
+}
+
+enum AccountType {
+  REAL
+  DEMO
 }
 
 enum OrderSide {

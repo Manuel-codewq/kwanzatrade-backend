@@ -6,18 +6,22 @@ import { getBrokerConfig, isInternalMarket } from '../config/brokerConfig'
 /* POST /api/trading/positions */
 export async function openPosition(req: AuthRequest, res: Response): Promise<void> {
   try {
-    const { symbol, side, lots, openPrice, stopLoss, takeProfit } = req.body as {
+    const { symbol, side, lots, openPrice, stopLoss, takeProfit, accountType } = req.body as {
       symbol: string; side: 'BUY' | 'SELL'; lots: number; openPrice: number
-      stopLoss?: number | null; takeProfit?: number | null
+      stopLoss?: number | null; takeProfit?: number | null; accountType?: 'REAL' | 'DEMO'
     }
+
+    const type = accountType === 'DEMO' ? 'DEMO' : 'REAL'
 
     if (!symbol || !side || !lots || !openPrice) {
       res.status(400).json({ error: 'Dados inválidos' }); return
     }
 
-    const account = await prisma.tradingAccount.findUnique({ where: { userId: req.userId! } })
+    const account = await prisma.tradingAccount.findUnique({ 
+      where: { userId_type: { userId: req.userId!, type } } 
+    })
     if (!account) {
-      res.status(400).json({ error: 'Conta de trading não encontrada. Faça um depósito primeiro.' }); return
+      res.status(400).json({ error: `Conta ${type} não encontrada.` }); return
     }
 
     const config             = getBrokerConfig(symbol)
@@ -51,7 +55,7 @@ export async function openPosition(req: AuthRequest, res: Response): Promise<voi
     })
 
     await prisma.tradingAccount.update({
-      where: { userId: req.userId! },
+      where: { userId_type: { userId: req.userId!, type } },
       data:  { balance: { decrement: margin + commission } },
     })
 
@@ -90,8 +94,13 @@ export async function openPosition(req: AuthRequest, res: Response): Promise<voi
 /* GET /api/trading/positions */
 export async function getPositions(req: AuthRequest, res: Response): Promise<void> {
   try {
+    const type = (req.query['accountType'] as string) === 'DEMO' ? 'DEMO' : 'REAL'
     const orders = await prisma.order.findMany({
-      where:   { userId: req.userId!, status: 'OPEN' },
+      where:   { 
+        userId: req.userId!, 
+        status: 'OPEN',
+        account: { type }
+      },
       orderBy: { openedAt: 'desc' },
     })
     res.json(orders)
@@ -103,8 +112,13 @@ export async function getPositions(req: AuthRequest, res: Response): Promise<voi
 /* GET /api/trading/history */
 export async function getHistory(req: AuthRequest, res: Response): Promise<void> {
   try {
+    const type = (req.query['accountType'] as string) === 'DEMO' ? 'DEMO' : 'REAL'
     const orders = await prisma.order.findMany({
-      where:   { userId: req.userId!, status: 'CLOSED' },
+      where:   { 
+        userId: req.userId!, 
+        status: 'CLOSED',
+        account: { type }
+      },
       orderBy: { closedAt: 'desc' },
       take:    50,
     })
@@ -114,65 +128,18 @@ export async function getHistory(req: AuthRequest, res: Response): Promise<void>
   }
 }
 
+import { closePositionLogic } from '../services/tradingService'
+
 /* POST /api/trading/close/:id */
 export async function closePosition(req: AuthRequest, res: Response): Promise<void> {
   try {
     const id             = req.params['id'] as string
     const { closePrice } = req.body as { closePrice: number }
 
-    const order = await prisma.order.findFirst({
-      where: { id, userId: req.userId!, status: 'OPEN' },
-    })
-    if (!order) {
-      res.status(404).json({ error: 'Posição não encontrada' }); return
-    }
-
-    const config  = getBrokerConfig(order.symbol)
-    const diff    = order.side === 'BUY'
-      ? closePrice - order.openPrice
-      : order.openPrice - closePrice
-    const profitLoss = +(diff * order.lots * config.contractSize).toFixed(2)
-    const margin     = order.lots * config.contractSize * order.openPrice / 100
-
-    const closed = await prisma.order.update({
-      where: { id },
-      data:  { closePrice, profitLoss, status: 'CLOSED', closedAt: new Date() },
-    })
-
-    await prisma.tradingAccount.update({
-      where: { userId: req.userId! },
-      data:  { balance: { increment: margin + profitLoss } },
-    })
-
-    if (profitLoss < 0) {
-      await prisma.brokerRevenue.create({
-        data: {
-          type:        'INTERNAL_MARKET',
-          amount:      Math.abs(profitLoss),
-          currency:    'AOA',
-          userId:      req.userId!,
-          orderId:     order.id,
-          symbol:      order.symbol,
-          description: `Perda do cliente: ${order.symbol}`,
-        },
-      })
-    }
-
-    await prisma.transaction.create({
-      data: {
-        userId:    req.userId!,
-        type:      profitLoss >= 0 ? 'PROFIT' : 'LOSS',
-        amount:    Math.abs(profitLoss),
-        currency:  'AOA',
-        status:    'COMPLETED',
-        reference: `CLOSE-${order.id.slice(0, 8)}`,
-      },
-    })
-
-    console.log(`📊 ${order.symbol} fechado: ${profitLoss >= 0 ? '✅' : '❌'} ${profitLoss} Kz`)
-    res.json({ ...closed, profitLoss, margin })
+    const result = await closePositionLogic(id, closePrice, req.userId!)
+    res.json(result)
   } catch (err: any) {
     console.error('❌ Erro fecho:', err.message)
-    res.status(500).json({ error: 'Erro interno' })
+    res.status(500).json({ error: err.message || 'Erro interno' })
   }
 }

@@ -136,10 +136,18 @@ export async function verifyOTPHandler(req: Request, res: Response): Promise<voi
       return
     }
 
+    // Criar conta REAL
     await prisma.tradingAccount.upsert({
-      where:  { userId: user.id },
+      where:  { userId_type: { userId: user.id, type: 'REAL' } },
       update: {},
-      create: { userId: user.id, balance: 0, currency: 'USD' },
+      create: { userId: user.id, type: 'REAL', balance: 0, currency: 'AOA' },
+    })
+
+    // Criar conta DEMO com saldo inicial generoso
+    await prisma.tradingAccount.upsert({
+      where:  { userId_type: { userId: user.id, type: 'DEMO' } },
+      update: {},
+      create: { userId: user.id, type: 'DEMO', balance: 10000000, currency: 'AOA' },
     })
 
     const token = makeToken(user.id, user.role)
