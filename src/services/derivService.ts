@@ -17,28 +17,15 @@ const SYMBOL_MAP: Record<string, string> = {
   'frxNZDUSD': 'NZDUSD',
   'frxXAUUSD': 'XAUUSD',
   'oil_brent': 'UKOIL',
-}
-
-const OTC_BASES: Record<string, number> = {
-  'EURUSD_OTC': 1.0842,
-  'GBPUSD_OTC': 1.2734,
-  'USDJPY_OTC': 149.50,
-  'USDCHF_OTC': 0.8923,
-  'AUDUSD_OTC': 0.6542,
-  'USDCAD_OTC': 1.3521,
-  'XAUUSD_OTC': 2341.50,
-  'UKOIL_OTC':  82.45,
-}
-
-const OTC_MAP: Record<string, string> = {
-  'R_10': 'EURUSD_OTC',
-  'R_25': 'GBPUSD_OTC',
-  'R_50': 'USDJPY_OTC',
-  'R_75': 'USDCHF_OTC',
-  'R_100': 'AUDUSD_OTC',
-  '1HZ10V': 'USDCAD_OTC',
-  '1HZ25V': 'XAUUSD_OTC',
-  '1HZ50V': 'UKOIL_OTC',
+  // Sintéticos Reais
+  'R_10': 'VOL10',
+  'R_25': 'VOL25',
+  'R_50': 'VOL50',
+  'R_75': 'VOL75',
+  'R_100': 'VOL100',
+  'BOOM500': 'BOOM500',
+  'CRASH500': 'CRASH500',
+  'stp': 'STEP',
 }
 
 class DerivService {
@@ -46,7 +33,6 @@ class DerivService {
   private reconnectInterval = 5000
   private pingInterval: NodeJS.Timeout | null = null
   private io: Server | null = null
-  private initialTicks: Record<string, number> = {}
 
   setIO(io: Server) {
     this.io = io
@@ -77,24 +63,10 @@ class DerivService {
 
         if (response.msg_type === 'tick') {
           const { symbol, quote } = response.tick
-          const quoteVal = parseFloat(quote)
-          
-          let internalSymbol = SYMBOL_MAP[symbol]
-          let finalPrice = quoteVal
-
-          if (!internalSymbol && OTC_MAP[symbol]) {
-            internalSymbol = OTC_MAP[symbol]
-            
-            // Lógica de mascarar preço sintético -> Forex base
-            if (!this.initialTicks[symbol]) {
-              this.initialTicks[symbol] = quoteVal
-            }
-            const percentChange = (quoteVal - this.initialTicks[symbol]) / this.initialTicks[symbol]
-            finalPrice = OTC_BASES[internalSymbol] * (1 + percentChange)
-          }
+          const internalSymbol = SYMBOL_MAP[symbol]
 
           if (internalSymbol) {
-            priceCache[internalSymbol] = finalPrice
+            priceCache[internalSymbol] = parseFloat(quote)
             
             // Emite actualização imediata para o frontend
             const updated = getPriceWithSpread(internalSymbol)
@@ -187,7 +159,7 @@ class DerivService {
   private subscribe() {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return
 
-    const symbols = [...Object.keys(SYMBOL_MAP), ...Object.keys(OTC_MAP)]
+    const symbols = Object.keys(SYMBOL_MAP)
     symbols.forEach(derivSymbol => {
       this.ws?.send(JSON.stringify({
         ticks: derivSymbol

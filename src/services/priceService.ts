@@ -22,6 +22,14 @@ const SPREADS: Record<string, number> = {
   AUDUSD: 0.0002,
   USDCAD: 0.0002,
   NZDUSD: 0.0002,
+  VOL10:  0.50,
+  VOL25:  0.50,
+  VOL50:  0.50,
+  VOL75:  0.50,
+  VOL100: 0.50,
+  BOOM500: 0.50,
+  CRASH500: 0.50,
+  STEP: 0.50,
 }
 
 export let priceCache: Record<string, number> = {}
@@ -45,6 +53,14 @@ export async function loadLastPrices(): Promise<void> {
         AUDUSD: 0.6542,
         USDCAD: 1.3521,
         NZDUSD: 0.6123,
+        VOL10:  6500.00,
+        VOL25:  2500.00,
+        VOL50:  500.00,
+        VOL75:  7500.00,
+        VOL100: 1000.00,
+        BOOM500: 5000.00,
+        CRASH500: 5000.00,
+        STEP: 8000.00,
       }
       console.log('⚠️ BD vazia. A usar preços iniciais.')
     }
