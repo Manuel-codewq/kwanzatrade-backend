@@ -82,51 +82,9 @@ export function startPriceSocket(io: Server) {
     socket.on('disconnect', () => console.log('🔌 Cliente desconectado:', socket.id))
   })
 
-  // Weekend simulation: regular + OTC pairs
-  setInterval(() => {
-    if (!isWeekend()) return
-
-    const updates: object[] = Object.keys(priceCache).map(symbol => {
-      const config   = BROKER_CONFIG[symbol]
-      const spread   = (config?.spread ?? getSpread(symbol)) * spreadMultiplier
-      const movement = (Math.random() - 0.5) * (priceCache[symbol] ?? 1) * 0.00005
-
-      priceCache[symbol] = Math.max(0.0001, (priceCache[symbol] ?? 1) + movement)
-      const price = priceCache[symbol]
-      return {
-        symbol,
-        price:      +price.toFixed(5),
-        bid:        +(price - spread / 2),
-        ask:        +(price + spread / 2),
-        spread,
-        changePct:  calcChangePct(symbol, price),
-        marketType: 'CLOSED',
-        isWeekend:  true,
-        isOTC:      false,
-      }
-    })
-
-    Object.entries(OTC_SYMBOLS).forEach(([otcSymbol, cfg]) => {
-      const basePrice = priceCache[cfg.baseSymbol] || otcPrices[otcSymbol] || 1
-      const movement  = (Math.random() - 0.495) * basePrice * 0.0008
-      otcPrices[otcSymbol] = Math.max(0.0001, (otcPrices[otcSymbol] || basePrice) + movement)
-      const price  = otcPrices[otcSymbol]
-      const spread = cfg.spread * spreadMultiplier
-      updates.push({
-        symbol:     otcSymbol,
-        price:      +price.toFixed(5),
-        bid:        +(price - spread / 2),
-        ask:        +(price + spread / 2),
-        spread,
-        changePct:  calcChangePct(otcSymbol, price),
-        marketType: 'OTC',
-        isWeekend:  true,
-        isOTC:      true,
-      })
-    })
-
-    io.emit('price_update', updates)
-  }, 1500)
+  // Nota: a simulação aleatória de preços OTC foi removida.
+  // Os pares OTC são agora alimentados em tempo real pelo derivService
+  // via índices sintéticos da Deriv (R_10→EURUSD_OTC, etc.) com dampening.
 
   console.log('📡 WebSocket de preços iniciado')
 }

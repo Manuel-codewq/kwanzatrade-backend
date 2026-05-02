@@ -134,6 +134,122 @@ export async function getHistory(req: AuthRequest, res: Response): Promise<void>
 
 import { closePositionLogic } from '../services/tradingService'
 
+/* POST /api/trading/positions/limit */
+export async function openLimitOrder(req: AuthRequest, res: Response): Promise<void> {
+  try {
+    const { symbol, side, lots, limitPrice, stopLoss, takeProfit, accountType, leverage: clientLeverage } = req.body as {
+      symbol: string; side: 'BUY' | 'SELL'; lots: number; limitPrice: number
+      stopLoss?: number | null; takeProfit?: number | null
+      accountType?: 'REAL' | 'DEMO'; leverage?: number
+    }
+
+    const type = accountType === 'DEMO' ? 'DEMO' : 'REAL'
+
+    if (!symbol || !side || !lots || !limitPrice) {
+      res.status(400).json({ error: 'Dados inválidos' }); return
+    }
+
+    const account = await prisma.tradingAccount.findUnique({
+      where: { userId_type: { userId: req.userId!, type } }
+    })
+    if (!account) {
+      res.status(400).json({ error: `Conta ${type} não encontrada.` }); return
+    }
+
+    const config           = getBrokerConfig(symbol)
+    const brokerSettings   = await prisma.brokerSettings.findFirst()
+    const KZ_RATE          = brokerSettings?.bnaRate ?? 925
+    const maxLeverage      = brokerSettings?.maxLeverage ?? 200
+    const leverage         = Math.min(clientLeverage ?? config.leverage, maxLeverage)
+    const margin           = (lots * config.contractSize * limitPrice / leverage) * KZ_RATE
+    const commission       = (config.commission * lots) * KZ_RATE
+
+    if (account.balance < margin + commission) {
+      res.status(400).json({
+        error: `Saldo insuficiente. Margem necessária: ${(margin + commission).toFixed(2)} Kz`,
+      }); return
+    }
+
+    const order = await prisma.order.create({
+      data: {
+        userId:     req.userId!,
+        accountId:  account.id,
+        symbol,
+        side,
+        lots,
+        openPrice:  limitPrice,
+        limitPrice,
+        stopLoss:   stopLoss   ?? null,
+        takeProfit: takeProfit ?? null,
+        commission,
+        spread:     0,
+        status:     'PENDING',
+        marketType: isInternalMarket() ? 'INTERNAL' : 'REAL',
+      },
+    })
+
+    await prisma.tradingAccount.update({
+      where: { userId_type: { userId: req.userId!, type } },
+      data:  { balance: { decrement: margin + commission } },
+    })
+
+    res.status(201).json({ ...order, commission, margin })
+  } catch (err: any) {
+    console.error('❌ Erro ordem limite:', err.message)
+    res.status(500).json({ error: 'Erro interno' })
+  }
+}
+
+/* DELETE /api/trading/positions/limit/:id */
+export async function cancelLimitOrder(req: AuthRequest, res: Response): Promise<void> {
+  try {
+    const id = req.params['id'] as string
+
+    const order = await prisma.order.findFirst({
+      where: { id, userId: req.userId!, status: 'PENDING' },
+      include: { account: true },
+    })
+    if (!order) {
+      res.status(404).json({ error: 'Ordem pendente não encontrada' }); return
+    }
+
+    const brokerSettings = await prisma.brokerSettings.findFirst()
+    const KZ_RATE        = brokerSettings?.bnaRate ?? 925
+    const leverage       = order.account?.leverage ?? 100
+    const config         = getBrokerConfig(order.symbol)
+    const margin         = (order.lots * config.contractSize * order.openPrice / leverage) * KZ_RATE
+
+    await prisma.order.update({
+      where: { id },
+      data:  { status: 'CANCELLED', closedAt: new Date() },
+    })
+
+    await prisma.tradingAccount.update({
+      where: { id: order.accountId },
+      data:  { balance: { increment: margin + order.commission } },
+    })
+
+    res.json({ success: true })
+  } catch (err: any) {
+    console.error('❌ Erro cancelar limite:', err.message)
+    res.status(500).json({ error: 'Erro interno' })
+  }
+}
+
+/* GET /api/trading/positions/pending */
+export async function getPendingOrders(req: AuthRequest, res: Response): Promise<void> {
+  try {
+    const type = (req.query['accountType'] as string) === 'DEMO' ? 'DEMO' : 'REAL'
+    const orders = await prisma.order.findMany({
+      where:   { userId: req.userId!, status: 'PENDING', account: { type } },
+      orderBy: { openedAt: 'desc' },
+    })
+    res.json(orders)
+  } catch {
+    res.status(500).json({ error: 'Erro interno' })
+  }
+}
+
 /* POST /api/trading/close/:id */
 export async function closePosition(req: AuthRequest, res: Response): Promise<void> {
   try {

@@ -79,6 +79,7 @@ model Order {
   spread      Float       @default(0)
   status      OrderStatus @default(OPEN)
   marketType  MarketType  @default(REAL)
+  limitPrice  Float?
   openedAt    DateTime    @default(now())
   closedAt    DateTime?
 
@@ -175,6 +176,7 @@ enum OrderSide {
 }
 
 enum OrderStatus {
+  PENDING
   OPEN
   CLOSED
   CANCELLED

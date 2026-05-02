@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import { authenticate, requireKYC } from '../middleware/auth'
 import { authenticatedLimiter, tradingLimiter } from '../middleware/rateLimit'
-import { openPosition, getPositions, getHistory, closePosition } from '../controllers/tradingController'
+import { openPosition, getPositions, getHistory, closePosition, openLimitOrder, cancelLimitOrder, getPendingOrders } from '../controllers/tradingController'
 import { getAllPrices } from '../services/priceService'
 import { getCandles } from '../services/candleService'
 
@@ -31,9 +31,12 @@ router.get('/candles/:symbol', async (req, res) => {
 
 router.use(authenticate)
 
-router.post('/positions',  tradingLimiter,       requireKYC, openPosition)
-router.get('/positions',   authenticatedLimiter, requireKYC, getPositions)
-router.get('/history',     authenticatedLimiter, requireKYC, getHistory)
-router.post('/close/:id',  tradingLimiter,       requireKYC, closePosition)
+router.post('/positions',          tradingLimiter,       requireKYC, openPosition)
+router.get('/positions',           authenticatedLimiter, requireKYC, getPositions)
+router.get('/positions/pending',   authenticatedLimiter, requireKYC, getPendingOrders)
+router.post('/positions/limit',    tradingLimiter,       requireKYC, openLimitOrder)
+router.delete('/positions/limit/:id', tradingLimiter,    requireKYC, cancelLimitOrder)
+router.get('/history',             authenticatedLimiter, requireKYC, getHistory)
+router.post('/close/:id',          tradingLimiter,       requireKYC, closePosition)
 
 export default router

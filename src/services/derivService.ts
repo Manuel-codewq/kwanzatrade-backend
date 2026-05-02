@@ -34,8 +34,14 @@ const SYMBOL_MAP: Record<string, string> = {
 /* ── Sintéticos Deriv → pares OTC (apenas nos bastidores) ────────
  * O utilizador vê "EURUSD OTC" — os preços movem-se com os sintéticos.
  * Os sintéticos não aparecem na plataforma como activos separados.
- * Lógica: pega na variação percentual do sintético e aplica ao preço
- * base do par OTC para criar um preço forex realista 24/7.
+ *
+ * Lógica tick-a-tick com dampening:
+ *   tickPct = (tickActual - tickAnterior) / tickAnterior
+ *   novoPrecoOTC = precoOTCActual × (1 + tickPct × DAMPEN)
+ *
+ * O DAMPEN controla quanto do movimento do sintético é aplicado ao OTC.
+ * Sintéticos como CRASH500/BOOM500 têm volatilidade extrema — sem
+ * dampening, o XAUUSD_OTC passaria de 2341 para 4600 em minutos.
  * ─────────────────────────────────────────────────────────────── */
 const OTC_MAP: Record<string, string> = {
   'R_10':     'EURUSD_OTC',
@@ -48,7 +54,20 @@ const OTC_MAP: Record<string, string> = {
   'stp':      'UKOIL_OTC',
 }
 
-/* Preços base dos pares OTC — ponto de partida para o cálculo relativo */
+/* Factor de amortecimento por sintético — quanto do movimento é aplicado ao OTC.
+ * Índices mais voláteis (BOOM/CRASH) precisam de dampening mais agressivo. */
+const OTC_DAMPEN: Record<string, number> = {
+  'R_10':     0.08,
+  'R_25':     0.08,
+  'R_50':     0.06,
+  'R_75':     0.06,
+  'R_100':    0.05,
+  'BOOM500':  0.02,
+  'CRASH500': 0.02,
+  'stp':      0.04,
+}
+
+/* Preços base — ponto de partida quando o servidor arranca */
 const OTC_BASES: Record<string, number> = {
   'EURUSD_OTC': 1.0842,
   'GBPUSD_OTC': 1.2734,
@@ -69,8 +88,10 @@ class DerivService {
   // Tracking de changePct para pares reais
   private openPrices: Record<string, number> = {}
 
-  // Tracking do tick inicial dos sintéticos (para calcular variação relativa)
-  private syntheticBaseTicks: Record<string, number> = {}
+  // Tracking tick anterior dos sintéticos (para variação tick-a-tick)
+  private syntheticPrevTicks: Record<string, number> = {}
+  // Preços OTC actuais — evoluem tick-a-tick a partir dos OTC_BASES
+  private currentOtcPrices: Record<string, number> = { ...OTC_BASES }
 
   setIO(io: Server) {
     this.io = io
@@ -124,26 +145,29 @@ class DerivService {
             return
           }
 
-          /* ── Sintéticos → pares OTC ──────────────────────────── */
+          /* ── Sintéticos → pares OTC (tick-a-tick com dampening) ── */
           const otcSymbol = OTC_MAP[symbol]
           if (otcSymbol) {
-            // Guardar o primeiro tick do sintético como referência
-            if (!this.syntheticBaseTicks[symbol]) {
-              this.syntheticBaseTicks[symbol] = quoteVal
+            const prevTick = this.syntheticPrevTicks[symbol]
+
+            if (prevTick !== undefined && prevTick > 0) {
+              // Variação percentual deste tick em relação ao anterior
+              const tickPct = (quoteVal - prevTick) / prevTick
+              const dampen  = OTC_DAMPEN[symbol] ?? 0.05
+
+              // Aplicar variação amortecida ao preço OTC actual
+              const currentOtc = this.currentOtcPrices[otcSymbol]
+              const newOtc      = +(currentOtc * (1 + tickPct * dampen)).toFixed(5)
+              this.currentOtcPrices[otcSymbol] = newOtc
+              priceCache[otcSymbol] = newOtc
             }
 
-            // Calcular variação percentual do sintético desde o início
-            const pctChange = (quoteVal - this.syntheticBaseTicks[symbol]) / this.syntheticBaseTicks[symbol]
+            this.syntheticPrevTicks[symbol] = quoteVal
 
-            // Aplicar essa variação ao preço base do par OTC
-            const basePrice = OTC_BASES[otcSymbol]
-            const otcPrice  = +(basePrice * (1 + pctChange)).toFixed(5)
-
-            // Guardar no priceCache para o priceSocket poder usar
-            priceCache[otcSymbol] = otcPrice
-
-            // changePct do OTC = variação percentual do sintético
-            const changePct = +(pctChange * 100).toFixed(3)
+            // changePct vs preço base original
+            const base      = OTC_BASES[otcSymbol]
+            const current   = this.currentOtcPrices[otcSymbol]
+            const changePct = base > 0 ? +((current - base) / base * 100).toFixed(3) : 0
 
             const updated = getPriceWithSpread(otcSymbol)
             if (updated && this.io) {
@@ -168,8 +192,39 @@ class DerivService {
     })
   }
 
+  private async checkLimitExecution(symbol: string, bid: number, ask: number) {
+    try {
+      const pending = await prisma.order.findMany({
+        where: { symbol, status: 'PENDING' },
+      })
+
+      for (const order of pending) {
+        if (!order.limitPrice) continue
+        const hit =
+          (order.side === 'BUY'  && ask <= order.limitPrice) ||
+          (order.side === 'SELL' && bid >= order.limitPrice)
+
+        if (hit) {
+          const fillPrice = order.side === 'BUY' ? ask : bid
+          await prisma.order.update({
+            where: { id: order.id },
+            data:  { status: 'OPEN', openPrice: fillPrice },
+          })
+          console.log(`⚡ ORDEM LIMITE EXECUTADA ${order.side} ${symbol} @ ${fillPrice}`)
+          if (this.io) {
+            this.io.emit('limit_order_executed', { id: order.id, symbol, fillPrice })
+          }
+        }
+      }
+    } catch (err: any) {
+      console.error('❌ Erro checkLimitExecution:', err.message)
+    }
+  }
+
   private async checkExecution(symbol: string, bid: number, ask: number) {
     try {
+      this.checkLimitExecution(symbol, bid, ask)
+
       const orders = await prisma.order.findMany({
         where: {
           symbol,
