@@ -280,10 +280,14 @@ class DerivService {
 
     // Subscrevemos tanto os pares reais como os sintéticos
     const symbols = [...Object.keys(SYMBOL_MAP), ...Object.keys(OTC_MAP)]
-    symbols.forEach(derivSymbol => {
-      this.ws?.send(JSON.stringify({ ticks: derivSymbol, subscribe: 1 }))
+    symbols.forEach((derivSymbol, i) => {
+      setTimeout(() => {
+        if (this.ws?.readyState === WebSocket.OPEN) {
+          this.ws.send(JSON.stringify({ ticks: derivSymbol, subscribe: 1 }))
+        }
+      }, i * 100)
     })
-    console.log(`📡 Subscrito a ${symbols.length} símbolos da Deriv (${Object.keys(SYMBOL_MAP).length} reais + ${Object.keys(OTC_MAP).length} sintéticos OTC)`)
+    console.log(`📡 A subscrever ${symbols.length} símbolos da Deriv...`)
   }
 
   private startHeartbeat() {
@@ -291,7 +295,7 @@ class DerivService {
       if (this.ws?.readyState === WebSocket.OPEN) {
         this.ws.send(JSON.stringify({ ping: 1 }))
       }
-    }, 30000)
+    }, 20000)
   }
 
   private cleanup() {
