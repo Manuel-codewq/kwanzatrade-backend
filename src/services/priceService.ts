@@ -44,23 +44,13 @@ export async function loadLastPrices(): Promise<void> {
       prices.forEach(p => console.log('  ' + p.symbol + ': ' + p.price))
     } else {
       priceCache = {
-        XAUUSD: 2341.50,
-        UKOIL:  83.42,
-        EURUSD: 1.0842,
-        GBPUSD: 1.2634,
-        USDJPY: 149.50,
-        USDCHF: 0.8923,
-        AUDUSD: 0.6542,
-        USDCAD: 1.3521,
-        NZDUSD: 0.6123,
-        VOL10:  6500.00,
-        VOL25:  2500.00,
-        VOL50:  500.00,
-        VOL75:  7500.00,
-        VOL100: 1000.00,
-        BOOM500: 5000.00,
-        CRASH500: 5000.00,
-        STEP: 8000.00,
+        XAUUSD: 2341.50, XAGUSD: 29.450,
+        UKOIL:  83.42,   USOIL:  79.00,
+        EURUSD: 1.0842,  GBPUSD: 1.2734, USDJPY: 149.50, USDCHF: 0.8923,
+        AUDUSD: 0.6542,  USDCAD: 1.3521, NZDUSD: 0.6123,
+        EURGBP: 0.8582,  EURJPY: 162.30, GBPJPY: 189.10,
+        EURAUD: 1.6570,  EURNZD: 1.7920, GBPCAD: 1.7180,
+        USDAOA: 924.50,
       }
       console.log('⚠️ BD vazia. A usar preços iniciais.')
     }

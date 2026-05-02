@@ -281,7 +281,7 @@ class DerivService {
     // Subscrevemos tanto os pares reais como os sintéticos
     const symbols = [...Object.keys(SYMBOL_MAP), ...Object.keys(OTC_MAP)]
     symbols.forEach(derivSymbol => {
-      this.ws?.send(JSON.stringify({ ticks: derivSymbol }))
+      this.ws?.send(JSON.stringify({ ticks: derivSymbol, subscribe: 1 }))
     })
     console.log(`📡 Subscrito a ${symbols.length} símbolos da Deriv (${Object.keys(SYMBOL_MAP).length} reais + ${Object.keys(OTC_MAP).length} sintéticos OTC)`)
   }
