@@ -116,6 +116,10 @@ export async function submitKYC(req: AuthRequest, res: Response): Promise<void> 
     }
 
     const userId = req.userId!
+    const { birthdate, provincia, municipio, address, postal, incomeSource, monthlyIncome, accountPurpose } = req.body as {
+      birthdate?: string; provincia?: string; municipio?: string; address?: string; postal?: string;
+      incomeSource?: string; monthlyIncome?: string; accountPurpose?: string;
+    }
 
     // Upload para Cloudinary em paralelo
     const folder = `kyc/${userId}`
@@ -132,6 +136,13 @@ export async function submitKYC(req: AuthRequest, res: Response): Promise<void> 
       prisma.kYCDocument.create({ data: { userId, type: 'bi_back',  url: backUrl   } }),
       prisma.kYCDocument.create({ data: { userId, type: 'selfie',   url: selfieUrl } }),
     ])
+
+    // Salvar dados textuais
+    await prisma.kYCData.upsert({
+      where: { userId },
+      update: { birthdate, provincia, municipio, address, postal, incomeSource, monthlyIncome, accountPurpose },
+      create: { userId, birthdate, provincia, municipio, address, postal, incomeSource, monthlyIncome, accountPurpose },
+    })
 
     const user = await prisma.user.update({
       where: { id: userId },

@@ -79,6 +79,7 @@ export async function getKYCPending(_req: Request, res: Response): Promise<void>
   try {
     const users = await prisma.user.findMany({
       where:   { kycStatus: { in: ['PENDING', 'REVIEW'] } },
+      include: { kycData: true },
       orderBy: { createdAt: 'asc' },
     })
     res.json(users)
