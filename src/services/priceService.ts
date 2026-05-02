@@ -1,35 +1,14 @@
-// TwelveData removido. Usando apenas Deriv WebSocket.
 import { prisma } from '../prisma/client'
-const SYMBOL_MAP: Record<string, string> = {
-  'XAUUSD': 'XAUUSD',
-  'UKOIL':  'UKOIL',
-  'EURUSD': 'EURUSD',
-  'GBPUSD': 'GBPUSD',
-  'USDJPY': 'USDJPY',
-  'USDCHF': 'USDCHF',
-  'AUDUSD': 'AUDUSD',
-  'USDCAD': 'USDCAD',
-  'NZDUSD': 'NZDUSD',
-}
 
 const SPREADS: Record<string, number> = {
-  XAUUSD: 0.60,
-  UKOIL:  0.05,
-  EURUSD: 0.0002,
-  GBPUSD: 0.0003,
-  USDJPY: 0.02,
-  USDCHF: 0.0002,
-  AUDUSD: 0.0002,
-  USDCAD: 0.0002,
-  NZDUSD: 0.0002,
-  VOL10:  0.50,
-  VOL25:  0.50,
-  VOL50:  0.50,
-  VOL75:  0.50,
-  VOL100: 0.50,
-  BOOM500: 0.50,
-  CRASH500: 0.50,
-  STEP: 0.50,
+  VOL10:    1.00,
+  VOL25:    1.00,
+  VOL50:    0.50,
+  VOL75:    1.00,
+  VOL100:   1.00,
+  BOOM500:  2.00,
+  CRASH500: 2.00,
+  STEP:     1.00,
 }
 
 export let priceCache: Record<string, number> = {}
@@ -37,32 +16,39 @@ export let priceCache: Record<string, number> = {}
 export async function loadLastPrices(): Promise<void> {
   try {
     const prices = await prisma.marketPrice.findMany()
-    prices.forEach(p => { priceCache[p.symbol] = p.price })
-
     if (prices.length > 0) {
-      console.log('📊 Preços carregados da BD:')
-      prices.forEach(p => console.log('  ' + p.symbol + ': ' + p.price))
+      prices.forEach(p => { priceCache[p.symbol] = p.price })
+      console.log('📊 Preços carregados da BD:', prices.map(p => `${p.symbol}:${p.price}`).join(', '))
     } else {
       priceCache = {
-        XAUUSD: 2341.50, XAGUSD: 29.450,
-        UKOIL:  83.42,   USOIL:  79.00,
-        EURUSD: 1.0842,  GBPUSD: 1.2734, USDJPY: 149.50, USDCHF: 0.8923,
-        AUDUSD: 0.6542,  USDCAD: 1.3521, NZDUSD: 0.6123,
-        EURGBP: 0.8582,  EURJPY: 162.30, GBPJPY: 189.10,
-        EURAUD: 1.6570,  EURNZD: 1.7920, GBPCAD: 1.7180,
-        USDAOA: 924.50,
+        VOL10:    6500.00,
+        VOL25:    2500.00,
+        VOL50:    500.00,
+        VOL75:    7500.00,
+        VOL100:   1000.00,
+        BOOM500:  5000.00,
+        CRASH500: 5000.00,
+        STEP:     8000.00,
       }
-      console.log('⚠️ BD vazia. A usar preços iniciais.')
+      console.log('⚠️ BD vazia. A usar preços iniciais dos sintéticos.')
     }
-
   } catch (err: any) {
     console.warn('⚠️ Erro ao carregar preços:', err.message)
+    priceCache = {
+      VOL10:    6500.00,
+      VOL25:    2500.00,
+      VOL50:    500.00,
+      VOL75:    7500.00,
+      VOL100:   1000.00,
+      BOOM500:  5000.00,
+      CRASH500: 5000.00,
+      STEP:     8000.00,
+    }
   }
 }
 
-
 export function getSpread(symbol: string): number {
-  return SPREADS[symbol] || 0.0002
+  return SPREADS[symbol] ?? 1.00
 }
 
 export function getPriceWithSpread(symbol: string) {
@@ -83,5 +69,3 @@ export function getAllPrices() {
     .map(s => getPriceWithSpread(s))
     .filter(Boolean)
 }
-
-// fetchAndUpdatePrices removido em favor do Deriv WebSocket em tempo real.
