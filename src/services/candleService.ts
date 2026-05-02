@@ -4,6 +4,23 @@ const APP_ID = process.env.DERIV_APP_ID || '1089'
 const DERIV_WS_URL = `wss://ws.derivws.com/websockets/v3?app_id=${APP_ID}`
 
 const DERIV_SYMBOL: Record<string, string> = {
+  // Real forex
+  EURUSD:  'frxEURUSD',
+  GBPUSD:  'frxGBPUSD',
+  USDJPY:  'frxUSDJPY',
+  USDCHF:  'frxUSDCHF',
+  AUDUSD:  'frxAUDUSD',
+  USDCAD:  'frxUSDCAD',
+  NZDUSD:  'frxNZDUSD',
+  EURGBP:  'frxEURGBP',
+  EURJPY:  'frxEURJPY',
+  GBPJPY:  'frxGBPJPY',
+  EURAUD:  'frxEURAUD',
+  EURNZD:  'frxEURNZD',
+  GBPCAD:  'frxGBPCAD',
+  XAUUSD:  'frxXAUUSD',
+  XAGUSD:  'frxXAGUSD',
+  // OTC synthetics
   VOL10:    'R_10',
   VOL25:    'R_25',
   VOL50:    'R_50',

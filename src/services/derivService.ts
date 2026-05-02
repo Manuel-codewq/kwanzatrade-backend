@@ -7,8 +7,27 @@ import { closePositionLogic } from './tradingService'
 const APP_ID = process.env.DERIV_APP_ID || '1089'
 const DERIV_WS_URL = `wss://ws.derivws.com/websockets/v3?app_id=${APP_ID}`
 
-/* Deriv symbol → internal symbol */
+/* Real forex symbols → internal symbol */
 const SYMBOL_MAP: Record<string, string> = {
+  'frxEURUSD': 'EURUSD',
+  'frxGBPUSD': 'GBPUSD',
+  'frxUSDJPY': 'USDJPY',
+  'frxUSDCHF': 'USDCHF',
+  'frxAUDUSD': 'AUDUSD',
+  'frxUSDCAD': 'USDCAD',
+  'frxNZDUSD': 'NZDUSD',
+  'frxEURGBP': 'EURGBP',
+  'frxEURJPY': 'EURJPY',
+  'frxGBPJPY': 'GBPJPY',
+  'frxEURAUD': 'EURAUD',
+  'frxEURNZD': 'EURNZD',
+  'frxGBPCAD': 'GBPCAD',
+  'frxXAUUSD': 'XAUUSD',
+  'frxXAGUSD': 'XAGUSD',
+}
+
+/* Synthetic OTC symbols → internal symbol */
+const OTC_MAP: Record<string, string> = {
   'R_10':    'VOL10',
   'R_25':    'VOL25',
   'R_50':    'VOL50',
@@ -18,6 +37,9 @@ const SYMBOL_MAP: Record<string, string> = {
   'CRASH500':'CRASH500',
   'stpRNG':  'STEP',
 }
+
+/* Combined map */
+const ALL_MAPS: Record<string, string> = { ...SYMBOL_MAP, ...OTC_MAP }
 
 class DerivService {
   private ws: WebSocket | null = null
@@ -55,7 +77,7 @@ class DerivService {
         if (response.msg_type === 'tick') {
           const { symbol, quote } = response.tick
           const quoteVal = parseFloat(quote)
-          const internalSymbol = SYMBOL_MAP[symbol]
+          const internalSymbol = ALL_MAPS[symbol]
           if (!internalSymbol) return
 
           if (!this.openPrices[internalSymbol]) {
@@ -70,7 +92,8 @@ class DerivService {
 
           const updated = getPriceWithSpread(internalSymbol)
           if (updated && this.io) {
-            this.io.emit('price_update', [{ ...updated, marketType: 'SYNTHETIC', changePct }])
+            const isOTC = OTC_MAP[symbol] !== undefined
+            this.io.emit('price_update', [{ ...updated, marketType: isOTC ? 'SYNTHETIC' : 'FOREX', changePct }])
           }
           if (updated) this.checkExecution(internalSymbol, updated.bid, updated.ask)
         }
@@ -91,15 +114,15 @@ class DerivService {
   }
 
   private subscribe() {
-    const symbols = Object.keys(SYMBOL_MAP)
-    symbols.forEach((derivSymbol, i) => {
+    const allSymbols = Object.keys(ALL_MAPS)
+    allSymbols.forEach((derivSymbol, i) => {
       setTimeout(() => {
         if (this.ws?.readyState === WebSocket.OPEN) {
           this.ws.send(JSON.stringify({ ticks: derivSymbol, subscribe: 1 }))
         }
-      }, i * 150)
+      }, i * 100)
     })
-    console.log(`📡 A subscrever ${symbols.length} índices sintéticos da Deriv...`)
+    console.log(`📡 A subscrever ${allSymbols.length} símbolos da Deriv (${Object.keys(SYMBOL_MAP).length} forex + ${Object.keys(OTC_MAP).length} OTC)...`)
   }
 
   private startHeartbeat() {
@@ -119,7 +142,6 @@ class DerivService {
 
   private async checkExecution(symbol: string, bid: number, ask: number) {
     try {
-      // Verificar ordens limite
       const pending = await prisma.order.findMany({ where: { symbol, status: 'PENDING' } })
       for (const order of pending) {
         if (!order.limitPrice) continue
@@ -134,7 +156,6 @@ class DerivService {
         }
       }
 
-      // Verificar SL/TP
       const orders = await prisma.order.findMany({
         where: { symbol, status: 'OPEN', OR: [{ stopLoss: { not: null } }, { takeProfit: { not: null } }] },
       })
@@ -142,10 +163,10 @@ class DerivService {
         let shouldClose = false
         let triggerPrice = 0
         if (order.side === 'BUY') {
-          if (order.stopLoss && bid <= order.stopLoss)      { shouldClose = true; triggerPrice = bid }
+          if (order.stopLoss && bid <= order.stopLoss)       { shouldClose = true; triggerPrice = bid }
           else if (order.takeProfit && bid >= order.takeProfit) { shouldClose = true; triggerPrice = bid }
         } else {
-          if (order.stopLoss && ask >= order.stopLoss)      { shouldClose = true; triggerPrice = ask }
+          if (order.stopLoss && ask >= order.stopLoss)       { shouldClose = true; triggerPrice = ask }
           else if (order.takeProfit && ask <= order.takeProfit) { shouldClose = true; triggerPrice = ask }
         }
         if (shouldClose) {
