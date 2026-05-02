@@ -9,17 +9,19 @@ export async function getBalance(req: AuthRequest, res: Response): Promise<void>
   try {
     const type = (req.query['type'] as string) === 'DEMO' ? 'DEMO' : 'REAL'
     
+    const DEMO_BALANCE = 10_000_000 // 10.000.000 AOA ≈ 10.800 USD
+
     let account = await prisma.tradingAccount.upsert({
       where:  { userId_type: { userId: req.userId!, type } },
       update: {},
-      create: { userId: req.userId!, type, balance: type === 'DEMO' ? 20000 : 0, currency: 'AOA' },
+      create: { userId: req.userId!, type, balance: type === 'DEMO' ? DEMO_BALANCE : 0, currency: 'AOA' },
     })
 
-    // Garante que a conta demo tenha saldo se estiver a 0 (migração antiga)
+    // Garante que conta demo tenha saldo se estiver a 0 (migração antiga)
     if (type === 'DEMO' && account.balance === 0) {
       account = await prisma.tradingAccount.update({
         where: { id: account.id },
-        data: { balance: 20000 }
+        data:  { balance: DEMO_BALANCE },
       })
     }
     res.json({ balance: account.balance, currency: account.currency, type: account.type })

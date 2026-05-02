@@ -143,11 +143,11 @@ export async function verifyOTPHandler(req: Request, res: Response): Promise<voi
       create: { userId: user.id, type: 'REAL', balance: 0, currency: 'AOA' },
     })
 
-    // Criar conta DEMO com saldo inicial generoso
+    // Criar conta DEMO com saldo inicial
     await prisma.tradingAccount.upsert({
       where:  { userId_type: { userId: user.id, type: 'DEMO' } },
       update: {},
-      create: { userId: user.id, type: 'DEMO', balance: 10000000, currency: 'AOA' },
+      create: { userId: user.id, type: 'DEMO', balance: 10_000_000, currency: 'AOA' },
     })
 
     const token = makeToken(user.id, user.role)
@@ -194,7 +194,7 @@ export async function resendOTP(req: Request, res: Response): Promise<void> {
 export async function loginDemo(req: Request, res: Response): Promise<void> {
   try {
     const DEMO_EMAIL = 'demo@dynamicworks.ao'
-    const DEMO_BALANCE = 20000
+    const DEMO_BALANCE = 10_000_000 // 10.000.000 AOA ≈ 10.800 USD
 
     let user = await prisma.user.findUnique({ where: { email: DEMO_EMAIL } })
 

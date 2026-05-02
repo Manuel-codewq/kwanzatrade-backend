@@ -4,18 +4,23 @@ import { getBrokerConfig } from '../config/brokerConfig'
 export async function closePositionLogic(orderId: string, closePrice: number, userId: string) {
   const order = await prisma.order.findFirst({
     where: { id: orderId, userId, status: 'OPEN' },
+    include: { account: true },
   })
-  
+
   if (!order) throw new Error('Posição não encontrada ou já fechada')
 
-  const config = getBrokerConfig(order.symbol)
-  const diff = order.side === 'BUY' 
-    ? closePrice - order.openPrice 
+  const config         = getBrokerConfig(order.symbol)
+  const brokerSettings = await prisma.brokerSettings.findFirst()
+  const KZ_RATE        = brokerSettings?.bnaRate ?? 925
+
+  const diff = order.side === 'BUY'
+    ? closePrice - order.openPrice
     : order.openPrice - closePrice
-    
-  const KZ_RATE = 925
+
   const profitLoss = +(diff * order.lots * config.contractSize * KZ_RATE).toFixed(2)
-  const margin = (order.lots * config.contractSize * order.openPrice / 100) * KZ_RATE
+  // Recalcular margem com a leverage guardada na conta
+  const leverage   = order.account?.leverage ?? 100
+  const margin     = (order.lots * config.contractSize * order.openPrice / leverage) * KZ_RATE
 
   // 1. Marcar como fechada
   const closed = await prisma.order.update({

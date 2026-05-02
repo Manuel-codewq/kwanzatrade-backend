@@ -5,6 +5,7 @@ import { prisma } from '../prisma/client'
 
 let spreadMultiplier = 1.0
 let otcPrices: Record<string, number> = {}
+let openPrices: Record<string, number> = {} // preços de abertura do dia para changePct
 
 async function loadSettings() {
   try {
@@ -28,6 +29,12 @@ async function initOTCPrices() {
   })
 }
 
+function calcChangePct(symbol: string, currentPrice: number): number {
+  if (!openPrices[symbol]) openPrices[symbol] = currentPrice
+  const open = openPrices[symbol]
+  return open > 0 ? +((currentPrice - open) / open * 100).toFixed(3) : 0
+}
+
 function buildSnapshot(weekend: boolean) {
   const items: object[] = Object.keys(priceCache).map(symbol => {
     const price  = priceCache[symbol]
@@ -40,7 +47,7 @@ function buildSnapshot(weekend: boolean) {
       spread,
       marketType: weekend ? 'CLOSED' : isInternalMarket() ? 'INTERNAL' : 'REAL',
       isWeekend:  weekend,
-      changePct:  0,
+      changePct:  calcChangePct(symbol, price),
       isOTC:      false,
     }
   })
@@ -54,7 +61,7 @@ function buildSnapshot(weekend: boolean) {
         bid:        +(price - spread / 2),
         ask:        +(price + spread / 2),
         spread,
-        changePct:  0,
+        changePct:  calcChangePct(otcSymbol, price),
         marketType: 'OTC',
         isWeekend:  true,
         isOTC:      true,
@@ -92,7 +99,7 @@ export function startPriceSocket(io: Server) {
         bid:        +(price - spread / 2),
         ask:        +(price + spread / 2),
         spread,
-        changePct:  +(movement / price * 100).toFixed(4),
+        changePct:  calcChangePct(symbol, price),
         marketType: 'CLOSED',
         isWeekend:  true,
         isOTC:      false,
@@ -111,7 +118,7 @@ export function startPriceSocket(io: Server) {
         bid:        +(price - spread / 2),
         ask:        +(price + spread / 2),
         spread,
-        changePct:  +(movement / basePrice * 100).toFixed(4),
+        changePct:  calcChangePct(otcSymbol, price),
         marketType: 'OTC',
         isWeekend:  true,
         isOTC:      true,

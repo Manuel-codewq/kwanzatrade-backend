@@ -6,9 +6,10 @@ import { getBrokerConfig, isInternalMarket } from '../config/brokerConfig'
 /* POST /api/trading/positions */
 export async function openPosition(req: AuthRequest, res: Response): Promise<void> {
   try {
-    const { symbol, side, lots, openPrice, stopLoss, takeProfit, accountType } = req.body as {
+    const { symbol, side, lots, openPrice, stopLoss, takeProfit, accountType, leverage: clientLeverage } = req.body as {
       symbol: string; side: 'BUY' | 'SELL'; lots: number; openPrice: number
-      stopLoss?: number | null; takeProfit?: number | null; accountType?: 'REAL' | 'DEMO'
+      stopLoss?: number | null; takeProfit?: number | null
+      accountType?: 'REAL' | 'DEMO'; leverage?: number
     }
 
     const type = accountType === 'DEMO' ? 'DEMO' : 'REAL'
@@ -17,20 +18,22 @@ export async function openPosition(req: AuthRequest, res: Response): Promise<voi
       res.status(400).json({ error: 'Dados inválidos' }); return
     }
 
-    const account = await prisma.tradingAccount.findUnique({ 
-      where: { userId_type: { userId: req.userId!, type } } 
+    const account = await prisma.tradingAccount.findUnique({
+      where: { userId_type: { userId: req.userId!, type } }
     })
     if (!account) {
       res.status(400).json({ error: `Conta ${type} não encontrada.` }); return
     }
 
-    const KZ_RATE = 925
-    const config             = getBrokerConfig(symbol)
-    const brokerSettings     = await prisma.brokerSettings.findFirst()
-    const spreadMultiplier   = brokerSettings?.spreadMultiplier ?? 1.0
-    const margin             = (lots * config.contractSize * openPrice / 100) * KZ_RATE
-    const commission         = (config.commission * lots) * KZ_RATE
-    const spreadVal          = (config.spread * spreadMultiplier * lots * config.contractSize) * KZ_RATE
+    const config           = getBrokerConfig(symbol)
+    const brokerSettings   = await prisma.brokerSettings.findFirst()
+    const KZ_RATE          = brokerSettings?.bnaRate ?? 925
+    const spreadMultiplier = brokerSettings?.spreadMultiplier ?? 1.0
+    const maxLeverage      = brokerSettings?.maxLeverage ?? 200
+    const leverage         = Math.min(clientLeverage ?? config.leverage, maxLeverage)
+    const margin           = (lots * config.contractSize * openPrice / leverage) * KZ_RATE
+    const commission       = (config.commission * lots) * KZ_RATE
+    const spreadVal        = (config.spread * spreadMultiplier * lots * config.contractSize) * KZ_RATE
 
     if (account.balance < margin + commission) {
       res.status(400).json({

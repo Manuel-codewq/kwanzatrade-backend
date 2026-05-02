@@ -8,6 +8,7 @@ const APP_ID = process.env.DERIV_APP_ID || '127916'
 const DERIV_WS_URL = `wss://ws.derivws.com/websockets/v3?app_id=${APP_ID}`
 
 const SYMBOL_MAP: Record<string, string> = {
+  // Major forex
   'frxEURUSD': 'EURUSD',
   'frxGBPUSD': 'GBPUSD',
   'frxUSDJPY': 'USDJPY',
@@ -15,17 +16,27 @@ const SYMBOL_MAP: Record<string, string> = {
   'frxAUDUSD': 'AUDUSD',
   'frxUSDCAD': 'USDCAD',
   'frxNZDUSD': 'NZDUSD',
+  // Minor forex (cross pairs)
+  'frxEURGBP': 'EURGBP',
+  'frxEURJPY': 'EURJPY',
+  'frxGBPJPY': 'GBPJPY',
+  'frxEURAUD': 'EURAUD',
+  'frxEURNZD': 'EURNZD',
+  'frxGBPCAD': 'GBPCAD',
+  // Metais
   'frxXAUUSD': 'XAUUSD',
+  'frxXAGUSD': 'XAGUSD',
+  // Energia
   'oil_brent': 'UKOIL',
   // Sintéticos Reais
-  'R_10': 'VOL10',
-  'R_25': 'VOL25',
-  'R_50': 'VOL50',
-  'R_75': 'VOL75',
-  'R_100': 'VOL100',
-  'BOOM500': 'BOOM500',
-  'CRASH500': 'CRASH500',
-  'stp': 'STEP',
+  'R_10':      'VOL10',
+  'R_25':      'VOL25',
+  'R_50':      'VOL50',
+  'R_75':      'VOL75',
+  'R_100':     'VOL100',
+  'BOOM500':   'BOOM500',
+  'CRASH500':  'CRASH500',
+  'stp':       'STEP',
 }
 
 class DerivService {
@@ -33,6 +44,8 @@ class DerivService {
   private reconnectInterval = 5000
   private pingInterval: NodeJS.Timeout | null = null
   private io: Server | null = null
+  private prevPrices: Record<string, number> = {}
+  private openPrices: Record<string, number> = {}
 
   setIO(io: Server) {
     this.io = io
@@ -66,21 +79,36 @@ class DerivService {
           const internalSymbol = SYMBOL_MAP[symbol]
 
           if (internalSymbol) {
-            priceCache[internalSymbol] = parseFloat(quote)
-            
+            const price = parseFloat(quote)
+
+            // Guardar preço de abertura do dia (primeiro tick recebido)
+            if (!this.openPrices[internalSymbol]) {
+              this.openPrices[internalSymbol] = price
+            }
+
+            priceCache[internalSymbol] = price
+
+            // Calcular changePct em relação ao preço de abertura do dia
+            const openPrice = this.openPrices[internalSymbol]
+            const changePct = openPrice > 0
+              ? +((price - openPrice) / openPrice * 100).toFixed(3)
+              : 0
+
+            this.prevPrices[internalSymbol] = price
+
             // Emite actualização imediata para o frontend
             const updated = getPriceWithSpread(internalSymbol)
             if (updated && this.io) {
               this.io.emit('price_update', [{
                 ...updated,
                 marketType: 'REAL',
-                changePct: 0,
+                changePct,
               }])
             }
 
-            // 2. Execução automática (SL/TP)
+            // Execução automática (SL/TP)
             if (updated) {
-                this.checkExecution(internalSymbol, updated.bid, updated.ask)
+              this.checkExecution(internalSymbol, updated.bid, updated.ask)
             }
           }
         }
@@ -161,11 +189,9 @@ class DerivService {
 
     const symbols = Object.keys(SYMBOL_MAP)
     symbols.forEach(derivSymbol => {
-      this.ws?.send(JSON.stringify({
-        ticks: derivSymbol
-      }))
+      this.ws?.send(JSON.stringify({ ticks: derivSymbol }))
     })
-    console.log('📡 Subscrito aos ticks da Deriv:', symbols.join(', '))
+    console.log(`📡 Subscrito a ${symbols.length} símbolos da Deriv:`, symbols.join(', '))
   }
 
   private startHeartbeat() {

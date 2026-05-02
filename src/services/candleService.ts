@@ -4,9 +4,22 @@ const APP_ID = process.env.DERIV_APP_ID || '127916'
 const DERIV_WS_URL = `wss://ws.derivws.com/websockets/v3?app_id=${APP_ID}`
 
 const DERIV_SYMBOL: Record<string, string> = {
+  // Major forex
   EURUSD: 'frxEURUSD', GBPUSD: 'frxGBPUSD', USDJPY: 'frxUSDJPY',
   USDCHF: 'frxUSDCHF', AUDUSD: 'frxAUDUSD', USDCAD: 'frxUSDCAD',
-  NZDUSD: 'frxNZDUSD', XAUUSD: 'frxXAUUSD', UKOIL: 'oil_brent',
+  NZDUSD: 'frxNZDUSD',
+  // Minor forex (cross pairs)
+  EURGBP: 'frxEURGBP', EURJPY: 'frxEURJPY', GBPJPY: 'frxGBPJPY',
+  EURAUD: 'frxEURAUD', EURNZD: 'frxEURNZD', GBPCAD: 'frxGBPCAD',
+  // Metais
+  XAUUSD: 'frxXAUUSD', XAGUSD: 'frxXAGUSD',
+  // Energia
+  UKOIL: 'oil_brent',
+  // OTC — usam o mesmo símbolo base sem o sufixo _OTC
+  EURUSD_OTC: 'frxEURUSD', GBPUSD_OTC: 'frxGBPUSD',
+  USDJPY_OTC: 'frxUSDJPY', USDCHF_OTC: 'frxUSDCHF',
+  AUDUSD_OTC: 'frxAUDUSD', USDCAD_OTC: 'frxUSDCAD',
+  XAUUSD_OTC: 'frxXAUUSD', UKOIL_OTC: 'oil_brent',
 }
 
 const GRANULARITY: Record<string, number> = {
