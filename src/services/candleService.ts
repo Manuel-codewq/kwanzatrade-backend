@@ -4,31 +4,14 @@ const APP_ID = process.env.DERIV_APP_ID || '1089'
 const DERIV_WS_URL = `wss://ws.derivws.com/websockets/v3?app_id=${APP_ID}`
 
 const DERIV_SYMBOL: Record<string, string> = {
-  // Real forex
-  EURUSD:  'frxEURUSD',
-  GBPUSD:  'frxGBPUSD',
-  USDJPY:  'frxUSDJPY',
-  USDCHF:  'frxUSDCHF',
-  AUDUSD:  'frxAUDUSD',
-  USDCAD:  'frxUSDCAD',
-  NZDUSD:  'frxNZDUSD',
-  EURGBP:  'frxEURGBP',
-  EURJPY:  'frxEURJPY',
-  GBPJPY:  'frxGBPJPY',
-  EURAUD:  'frxEURAUD',
-  EURNZD:  'frxEURNZD',
-  GBPCAD:  'frxGBPCAD',
-  XAUUSD:  'frxXAUUSD',
-  XAGUSD:  'frxXAGUSD',
-  // OTC synthetics
-  VOL10:    'R_10',
-  VOL25:    'R_25',
-  VOL50:    'R_50',
-  VOL75:    'R_75',
-  VOL100:   'R_100',
-  BOOM500:  'BOOM500',
-  CRASH500: 'CRASH500',
-  STEP:     'stpRNG',
+  // Weekday forex
+  EURUSD: 'frxEURUSD', GBPUSD: 'frxGBPUSD', USDJPY: 'frxUSDJPY', USDCHF: 'frxUSDCHF',
+  AUDUSD: 'frxAUDUSD', USDCAD: 'frxUSDCAD', NZDUSD: 'frxNZDUSD',
+  EURGBP: 'frxEURGBP', EURJPY: 'frxEURJPY', GBPJPY: 'frxGBPJPY',
+  EURAUD: 'frxEURAUD', EURNZD: 'frxEURNZD', GBPCAD: 'frxGBPCAD',
+  // Weekend continuous (real Deriv synthetic indices, presented as forex names)
+  WEURUSD: 'R_10',    WGBPUSD: 'R_25',    WUSDJPY: 'R_50',    WAUDUSD: 'R_75',   WUSDCAD: 'R_100',
+  WUSDCHF: '1HZ10V',  WEURGBP: '1HZ25V',  WEURJPY: '1HZ50V',  WGBPJPY: '1HZ75V', WUSDAOA: '1HZ100V',
 }
 
 const GRANULARITY: Record<string, number> = {

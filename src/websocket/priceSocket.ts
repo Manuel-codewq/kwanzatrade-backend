@@ -3,7 +3,10 @@ import { priceCache, getSpread } from '../services/priceService'
 import { prisma } from '../prisma/client'
 import { isWeekend } from '../config/brokerConfig'
 
-const OTC_SYMBOLS = new Set(['VOL10','VOL25','VOL50','VOL75','VOL100','BOOM500','CRASH500','STEP'])
+const WEEKEND_SYMBOLS = new Set([
+  'WEURUSD','WGBPUSD','WUSDJPY','WAUDUSD','WUSDCAD','WUSDCHF',
+  'WEURGBP','WEURJPY','WGBPJPY','WUSDAOA',
+])
 
 let spreadMultiplier = 1.0
 
@@ -19,25 +22,23 @@ function buildSnapshot() {
 
   return Object.keys(priceCache)
     .filter(symbol => {
-      // On weekends: only send OTC symbols
-      // On weekdays: send all symbols
-      if (weekend) return OTC_SYMBOLS.has(symbol)
-      return true
+      if (weekend) return WEEKEND_SYMBOLS.has(symbol)   // weekends: only continuous
+      return !WEEKEND_SYMBOLS.has(symbol)               // weekdays: only forex
     })
     .map(symbol => {
       const price  = priceCache[symbol]
       const spread = getSpread(symbol) * spreadMultiplier
-      const isOTC  = OTC_SYMBOLS.has(symbol)
+      const isWeekendSym = WEEKEND_SYMBOLS.has(symbol)
       return {
         symbol,
         price,
         bid:        +(price - spread / 2),
         ask:        +(price + spread / 2),
         spread,
-        marketType: isOTC ? 'SYNTHETIC' : 'FOREX',
+        marketType: isWeekendSym ? 'CONTINUOUS' : 'FOREX',
         isWeekend:  weekend,
         changePct:  0,
-        isOTC,
+        isOTC:      isWeekendSym,
       }
     })
 }
@@ -52,5 +53,5 @@ export function startPriceSocket(io: Server) {
     socket.on('disconnect', () => console.log('🔌 Cliente desconectado:', socket.id))
   })
 
-  console.log('📡 WebSocket de preços iniciado (forex + OTC sintéticos)')
+  console.log('📡 WebSocket de preços iniciado (forex weekday + continuous weekend)')
 }

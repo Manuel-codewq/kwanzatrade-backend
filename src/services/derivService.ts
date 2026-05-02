@@ -4,42 +4,32 @@ import { priceCache, getPriceWithSpread } from './priceService'
 import { prisma } from '../prisma/client'
 import { closePositionLogic } from './tradingService'
 
-const APP_ID = process.env.DERIV_APP_ID || '1089'
+const APP_ID = process.env.DERIV_APP_ID || '127916'
 const DERIV_WS_URL = `wss://ws.derivws.com/websockets/v3?app_id=${APP_ID}`
 
 /* Real forex symbols → internal symbol */
 const SYMBOL_MAP: Record<string, string> = {
-  'frxEURUSD': 'EURUSD',
-  'frxGBPUSD': 'GBPUSD',
-  'frxUSDJPY': 'USDJPY',
-  'frxUSDCHF': 'USDCHF',
-  'frxAUDUSD': 'AUDUSD',
-  'frxUSDCAD': 'USDCAD',
-  'frxNZDUSD': 'NZDUSD',
-  'frxEURGBP': 'EURGBP',
-  'frxEURJPY': 'EURJPY',
-  'frxGBPJPY': 'GBPJPY',
-  'frxEURAUD': 'EURAUD',
-  'frxEURNZD': 'EURNZD',
-  'frxGBPCAD': 'GBPCAD',
-  'frxXAUUSD': 'XAUUSD',
-  'frxXAGUSD': 'XAGUSD',
+  'frxEURUSD': 'EURUSD', 'frxGBPUSD': 'GBPUSD', 'frxUSDJPY': 'USDJPY',
+  'frxUSDCHF': 'USDCHF', 'frxAUDUSD': 'AUDUSD', 'frxUSDCAD': 'USDCAD',
+  'frxNZDUSD': 'NZDUSD', 'frxEURGBP': 'EURGBP', 'frxEURJPY': 'EURJPY',
+  'frxGBPJPY': 'GBPJPY', 'frxEURAUD': 'EURAUD', 'frxEURNZD': 'EURNZD', 'frxGBPCAD': 'GBPCAD',
 }
 
-/* Synthetic OTC symbols → internal symbol */
-const OTC_MAP: Record<string, string> = {
-  'R_10':    'VOL10',
-  'R_25':    'VOL25',
-  'R_50':    'VOL50',
-  'R_75':    'VOL75',
-  'R_100':   'VOL100',
-  'BOOM500': 'BOOM500',
-  'CRASH500':'CRASH500',
-  'stpRNG':  'STEP',
+/* Weekend continuous: Deriv synthetics shown to user as forex Weekend pairs */
+const WEEKEND_MAP: Record<string, string> = {
+  'R_10':     'WEURUSD',
+  'R_25':     'WGBPUSD',
+  'R_50':     'WUSDJPY',
+  'R_75':     'WAUDUSD',
+  'R_100':    'WUSDCAD',
+  '1HZ10V':   'WUSDCHF',
+  '1HZ25V':   'WEURGBP',
+  '1HZ50V':   'WEURJPY',
+  '1HZ75V':   'WGBPJPY',
+  '1HZ100V':  'WUSDAOA',
 }
 
-/* Combined map */
-const ALL_MAPS: Record<string, string> = { ...SYMBOL_MAP, ...OTC_MAP }
+const ALL_MAPS: Record<string, string> = { ...SYMBOL_MAP, ...WEEKEND_MAP }
 
 class DerivService {
   private ws: WebSocket | null = null
@@ -92,8 +82,8 @@ class DerivService {
 
           const updated = getPriceWithSpread(internalSymbol)
           if (updated && this.io) {
-            const isOTC = OTC_MAP[symbol] !== undefined
-            this.io.emit('price_update', [{ ...updated, marketType: isOTC ? 'SYNTHETIC' : 'FOREX', changePct }])
+            const isWeekendSym = WEEKEND_MAP[symbol] !== undefined
+            this.io.emit('price_update', [{ ...updated, marketType: isWeekendSym ? 'CONTINUOUS' : 'FOREX', changePct }])
           }
           if (updated) this.checkExecution(internalSymbol, updated.bid, updated.ask)
         }
@@ -122,7 +112,7 @@ class DerivService {
         }
       }, i * 100)
     })
-    console.log(`📡 A subscrever ${allSymbols.length} símbolos da Deriv (${Object.keys(SYMBOL_MAP).length} forex + ${Object.keys(OTC_MAP).length} OTC)...`)
+    console.log(`📡 A subscrever ${allSymbols.length} símbolos da Deriv (${Object.keys(SYMBOL_MAP).length} forex + ${Object.keys(WEEKEND_MAP).length} continuous)...`)
   }
 
   private startHeartbeat() {
@@ -163,10 +153,10 @@ class DerivService {
         let shouldClose = false
         let triggerPrice = 0
         if (order.side === 'BUY') {
-          if (order.stopLoss && bid <= order.stopLoss)       { shouldClose = true; triggerPrice = bid }
+          if (order.stopLoss && bid <= order.stopLoss)         { shouldClose = true; triggerPrice = bid }
           else if (order.takeProfit && bid >= order.takeProfit) { shouldClose = true; triggerPrice = bid }
         } else {
-          if (order.stopLoss && ask >= order.stopLoss)       { shouldClose = true; triggerPrice = ask }
+          if (order.stopLoss && ask >= order.stopLoss)         { shouldClose = true; triggerPrice = ask }
           else if (order.takeProfit && ask <= order.takeProfit) { shouldClose = true; triggerPrice = ask }
         }
         if (shouldClose) {
