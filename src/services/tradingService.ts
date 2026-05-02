@@ -29,7 +29,7 @@ export async function closePositionLogic(orderId: string, closePrice: number, us
 
   // 2. Devolver margem + P&L ao saldo
   await prisma.tradingAccount.update({
-    where: { userId },
+    where: { id: order.accountId },
     data: { balance: { increment: margin + profitLoss } }
   })
 

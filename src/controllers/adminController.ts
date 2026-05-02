@@ -44,7 +44,7 @@ export async function getStats(_req: Request, res: Response): Promise<void> {
 export async function getClients(_req: Request, res: Response): Promise<void> {
   try {
     const clients = await prisma.user.findMany({
-      include: { account: true },
+      include: { accounts: true },
       orderBy: { createdAt: 'desc' },
     })
     res.json(clients)
@@ -61,7 +61,7 @@ export async function getClientById(req: Request, res: Response): Promise<void> 
     const client = await prisma.user.findUnique({
       where:   { id },
       include: {
-        account:      true,
+        accounts:     true,
         transactions: { orderBy: { createdAt: 'desc' }, take: 10 },
         orders:       { orderBy: { openedAt:  'desc' }, take: 10 },
       },
@@ -256,9 +256,9 @@ export async function confirmTransaction(req: Request, res: Response): Promise<v
 
     if (tx.type === 'DEPOSIT') {
       await prisma.tradingAccount.upsert({
-        where:  { userId: tx.userId },
+        where:  { userId_type: { userId: tx.userId, type: 'REAL' } },
         update: { balance: { increment: tx.amount } },
-        create: { userId: tx.userId, balance: tx.amount, currency: 'AOA' },
+        create: { userId: tx.userId, type: 'REAL', balance: tx.amount, currency: 'AOA' },
       })
     }
     const transaction = await prisma.transaction.update({ where: { id }, data: { status: 'COMPLETED' } })

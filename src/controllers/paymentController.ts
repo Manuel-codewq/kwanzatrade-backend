@@ -87,9 +87,9 @@ async function processPayment(
       })
 
       await prisma.tradingAccount.upsert({
-        where:  { userId: transaction.userId },
+        where:  { userId_type: { userId: transaction.userId, type: 'REAL' } },
         update: { balance: { increment: transaction.amount } },
-        create: { userId: transaction.userId, balance: transaction.amount, currency: 'AOA' },
+        create: { userId: transaction.userId, type: 'REAL', balance: transaction.amount, currency: 'AOA' },
       })
 
       console.log(`✅ Depósito confirmado: ${transaction.amount} Kz para ${transaction.user.fullName}`)

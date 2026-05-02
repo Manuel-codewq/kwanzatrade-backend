@@ -9,7 +9,9 @@ import { uploadToCloudinary } from '../services/cloudinaryService'
 export async function getDashboard(req: AuthRequest, res: Response): Promise<void> {
   try {
     const userId  = req.userId!
-    const account = await prisma.tradingAccount.findUnique({ where: { userId } })
+    const account = await prisma.tradingAccount.findUnique({ 
+      where: { userId_type: { userId, type: 'REAL' } } 
+    })
     const balance  = account?.balance  ?? 0
     const leverage = account?.leverage ?? 100
 

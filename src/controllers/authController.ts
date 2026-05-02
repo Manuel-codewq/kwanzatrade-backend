@@ -213,9 +213,9 @@ export async function loginDemo(req: Request, res: Response): Promise<void> {
 
     // Repõe sempre o saldo a 20.000
     await prisma.tradingAccount.upsert({
-      where:  { userId: user.id },
+      where:  { userId_type: { userId: user.id, type: 'DEMO' } },
       update: { balance: DEMO_BALANCE },
-      create: { userId: user.id, balance: DEMO_BALANCE, currency: 'USD' },
+      create: { userId: user.id, type: 'DEMO', balance: DEMO_BALANCE, currency: 'USD' },
     })
 
     const token = makeToken(user.id, user.role)
