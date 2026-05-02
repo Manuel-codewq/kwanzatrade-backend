@@ -24,12 +24,13 @@ export async function openPosition(req: AuthRequest, res: Response): Promise<voi
       res.status(400).json({ error: `Conta ${type} não encontrada.` }); return
     }
 
+    const KZ_RATE = 925
     const config             = getBrokerConfig(symbol)
     const brokerSettings     = await prisma.brokerSettings.findFirst()
     const spreadMultiplier   = brokerSettings?.spreadMultiplier ?? 1.0
-    const margin             = lots * config.contractSize * openPrice / 100
-    const commission         = config.commission * lots
-    const spreadVal          = config.spread * spreadMultiplier * lots * config.contractSize
+    const margin             = (lots * config.contractSize * openPrice / 100) * KZ_RATE
+    const commission         = (config.commission * lots) * KZ_RATE
+    const spreadVal          = (config.spread * spreadMultiplier * lots * config.contractSize) * KZ_RATE
 
     if (account.balance < margin + commission) {
       res.status(400).json({

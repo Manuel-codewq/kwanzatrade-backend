@@ -13,8 +13,9 @@ export async function closePositionLogic(orderId: string, closePrice: number, us
     ? closePrice - order.openPrice 
     : order.openPrice - closePrice
     
-  const profitLoss = +(diff * order.lots * config.contractSize).toFixed(2)
-  const margin = (order.lots * config.contractSize * order.openPrice) / 100
+  const KZ_RATE = 925
+  const profitLoss = +(diff * order.lots * config.contractSize * KZ_RATE).toFixed(2)
+  const margin = (order.lots * config.contractSize * order.openPrice / 100) * KZ_RATE
 
   // 1. Marcar como fechada
   const closed = await prisma.order.update({
