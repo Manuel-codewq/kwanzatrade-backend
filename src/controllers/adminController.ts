@@ -390,11 +390,12 @@ export async function updateSettings(req: Request, res: Response): Promise<void>
   try {
     const {
       maxLeverage, minDepositKz, internalMarketStart, internalMarketEnd,
-      maintenanceMode, bnaRate, spreadMultiplier,
+      maintenanceMode, bnaRate, spreadMultiplier, trc20WalletAddress,
     } = req.body as {
       maxLeverage: number; minDepositKz: number
       internalMarketStart: string; internalMarketEnd: string
       maintenanceMode: boolean; bnaRate: number; spreadMultiplier: number
+      trc20WalletAddress?: string
     }
 
     const internalStart = parseInt(internalMarketStart?.split(':')[0] ?? '20')
@@ -405,10 +406,12 @@ export async function updateSettings(req: Request, res: Response): Promise<void>
       update: {
         maxLeverage, minDeposit: minDepositKz, internalStart, internalEnd,
         maintenance: maintenanceMode, bnaRate, spreadMultiplier,
+        ...(trc20WalletAddress !== undefined && { trc20WalletAddress }),
       },
       create: {
         id: 1, maxLeverage, minDeposit: minDepositKz, internalStart, internalEnd,
         maintenance: maintenanceMode, bnaRate, spreadMultiplier,
+        trc20WalletAddress: trc20WalletAddress ?? '',
       },
     })
     res.json({ message: 'Configurações guardadas!', settings })

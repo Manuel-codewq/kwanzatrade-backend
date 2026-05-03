@@ -4,6 +4,16 @@ import { prisma } from '../prisma/client'
 import { sendTransactionOTP, verifyTransactionOTP } from '../services/emailService'
 import { createCharge } from '../services/appypayService'
 
+/* GET /api/wallet/crypto-address */
+export async function getCryptoAddress(_req: AuthRequest, res: Response): Promise<void> {
+  try {
+    const settings = await prisma.brokerSettings.findFirst()
+    res.json({ address: settings?.trc20WalletAddress ?? '' })
+  } catch {
+    res.status(500).json({ error: 'Erro interno' })
+  }
+}
+
 /* GET /api/wallet/balance */
 export async function getBalance(req: AuthRequest, res: Response): Promise<void> {
   try {

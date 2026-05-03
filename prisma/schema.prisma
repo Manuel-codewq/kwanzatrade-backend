@@ -211,15 +211,16 @@ enum RevenueType {
 }
 
 model BrokerSettings {
-  id               Int      @id @default(1)
-  minDeposit       Float    @default(5000)
-  maxLeverage      Int      @default(100)
-  internalStart    Int      @default(20)
-  internalEnd      Int      @default(8)
-  maintenance      Boolean  @default(false)
-  bnaRate          Float    @default(925)
-  spreadMultiplier Float    @default(1.0)
-  updatedAt        DateTime @updatedAt
+  id                 Int      @id @default(1)
+  minDeposit         Float    @default(5000)
+  maxLeverage        Int      @default(100)
+  internalStart      Int      @default(20)
+  internalEnd        Int      @default(8)
+  maintenance        Boolean  @default(false)
+  bnaRate            Float    @default(925)
+  spreadMultiplier   Float    @default(1.0)
+  trc20WalletAddress String   @default("")
+  updatedAt          DateTime @updatedAt
 }
 
 model SupportTicket {

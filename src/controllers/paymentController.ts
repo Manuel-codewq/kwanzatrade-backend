@@ -3,6 +3,22 @@ import { prisma } from '../prisma/client'
 import { sendDepositConfirmationEmail } from '../services/emailService'
 import { getCharge } from '../services/appypayService'
 
+// Stripe — reservado para activação futura
+// import Stripe from 'stripe'
+// const stripe = new Stripe(process.env.STRIPE_SECRET_KEY ?? '', { apiVersion: '2025-03-31.basil' })
+//
+// export async function createStripeSession(req: AuthRequest, res: Response): Promise<void> {
+//   const { amount } = req.body as { amount: number }
+//   const session = await stripe.checkout.sessions.create({
+//     mode: 'payment',
+//     payment_method_types: ['card'],
+//     line_items: [{ price_data: { currency: 'usd', unit_amount: Math.round(amount), product_data: { name: 'Depósito Dynamic Works' } }, quantity: 1 }],
+//     success_url: `${process.env.FRONTEND_URL}/wallet?deposit=success`,
+//     cancel_url:  `${process.env.FRONTEND_URL}/wallet?deposit=cancel`,
+//   })
+//   res.json({ url: session.url })
+// }
+
 /* POST /api/payments/webhook */
 export async function handleAppyPayWebhook(req: Request, res: Response): Promise<void> {
   try {
