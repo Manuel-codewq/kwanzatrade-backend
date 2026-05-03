@@ -14,7 +14,7 @@ export async function verifyTurnstile(
   const token = req.body.turnstileToken
 
   if (!token) {
-    next()
+    res.status(400).json({ error: 'Verificação de segurança necessária. Recarregue a página.' })
     return
   }
 
