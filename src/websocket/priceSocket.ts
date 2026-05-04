@@ -50,6 +50,14 @@ export function startPriceSocket(io: Server) {
   io.on('connection', (socket) => {
     console.log('🔌 Cliente conectado:', socket.id)
     socket.emit('prices_snapshot', buildSnapshot())
+
+    /* Cada cliente entra na sua sala pessoal para receber eventos binários */
+    socket.on('join_room', (userId: string) => {
+      if (typeof userId === 'string' && userId.length > 0) {
+        socket.join(`user_${userId}`)
+      }
+    })
+
     socket.on('disconnect', () => console.log('🔌 Cliente desconectado:', socket.id))
   })
 

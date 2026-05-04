@@ -23,12 +23,13 @@ model User {
   tutorialCompleted Boolean        @default(false)
 
   accounts          TradingAccount[]
-  transactions Transaction[]
-  orders       Order[]
-  brokerRevenues BrokerRevenue[]
-  kycDocuments KYCDocument[]
-  kycData      KYCData?
-  tickets      SupportTicket[]
+  transactions      Transaction[]
+  orders            Order[]
+  brokerRevenues    BrokerRevenue[]
+  kycDocuments      KYCDocument[]
+  kycData           KYCData?
+  tickets           SupportTicket[]
+  binaryOptions     BinaryOption[]
 }
 
 model KYCData {
@@ -211,16 +212,40 @@ enum RevenueType {
 }
 
 model BrokerSettings {
-  id                 Int      @id @default(1)
-  minDeposit         Float    @default(5000)
-  maxLeverage        Int      @default(100)
-  internalStart      Int      @default(20)
-  internalEnd        Int      @default(8)
-  maintenance        Boolean  @default(false)
-  bnaRate            Float    @default(925)
-  spreadMultiplier   Float    @default(1.0)
-  trc20WalletAddress String   @default("")
-  updatedAt          DateTime @updatedAt
+  id                  Int      @id @default(1)
+  minDeposit          Float    @default(5000)
+  maxLeverage         Int      @default(100)
+  internalStart       Int      @default(20)
+  internalEnd         Int      @default(8)
+  maintenance         Boolean  @default(false)
+  bnaRate             Float    @default(925)
+  spreadMultiplier    Float    @default(1.0)
+  trc20WalletAddress  String   @default("")
+  binaryPayoutDefault Float    @default(0.91)
+  binaryPayouts       String   @default("{}")
+  updatedAt           DateTime @updatedAt
+}
+
+model BinaryOption {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id])
+  symbol      String
+  direction   String    // "UP" | "DOWN"
+  amount      Float
+  payoutRate  Float     @default(0.91)
+  entryPrice  Float
+  exitPrice   Float?
+  expiresAt   DateTime
+  resolvedAt  DateTime?
+  result      String?   // "WIN" | "LOSS" | "DRAW"
+  payout      Float?
+  accountType String    @default("REAL")
+  createdAt   DateTime  @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([result])
 }
 
 model SupportTicket {

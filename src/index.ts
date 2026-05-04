@@ -14,9 +14,11 @@ import userRoutes    from './routes/user'
 import adminRoutes   from './routes/admin'
 import paymentRoutes from './routes/payments'
 import supportRoutes from './routes/support'
+import binaryRoutes  from './routes/binary'
 import { startPriceSocket } from './websocket/priceSocket'
 import { loadLastPrices } from './services/priceService'
 import { derivService } from './services/derivService'
+import { initBinaryService } from './services/binaryService'
 import { generalLimiter, authLimiter } from './middleware/rateLimit'
 
 const app        = express()
@@ -73,6 +75,7 @@ app.use('/api/user',     userRoutes)
 app.use('/api/admin',    adminRoutes)
 app.use('/api/payments', paymentRoutes)
 app.use('/api/support',  supportRoutes)
+app.use('/api/binary',   binaryRoutes)
 
 /* ── health check ── */
 app.get('/health', (_, res) => {
@@ -82,6 +85,7 @@ app.get('/health', (_, res) => {
 /* ── websocket preços ── */
 startPriceSocket(io)
 derivService.setIO(io)
+initBinaryService(io)
 
 /* ── arranque ── */
 const PORT = process.env.PORT ?? 3001
