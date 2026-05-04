@@ -6,15 +6,21 @@ import { getBrokerConfig, isInternalMarket } from '../config/brokerConfig'
 /* POST /api/trading/positions */
 export async function openPosition(req: AuthRequest, res: Response): Promise<void> {
   try {
-    const { symbol, side, lots, openPrice, stopLoss, takeProfit, accountType, leverage: clientLeverage } = req.body as {
-      symbol: string; side: 'BUY' | 'SELL'; lots: number; openPrice: number
+    const {
+      symbol, side, openPrice, stopLoss, takeProfit, accountType,
+      valorKz,           // novo: valor em Kz — frontend envia isto
+      lots: clientLots,  // legado: mantido para compatibilidade
+      leverage: clientLeverage,
+    } = req.body as {
+      symbol: string; side: 'BUY' | 'SELL'; openPrice: number
       stopLoss?: number | null; takeProfit?: number | null
-      accountType?: 'REAL' | 'DEMO'; leverage?: number
+      accountType?: 'REAL' | 'DEMO'
+      valorKz?: number; lots?: number; leverage?: number
     }
 
     const type = accountType === 'DEMO' ? 'DEMO' : 'REAL'
 
-    if (!symbol || !side || !lots || !openPrice) {
+    if (!symbol || !side || !openPrice) {
       res.status(400).json({ error: 'Dados inválidos' }); return
     }
 
@@ -30,10 +36,29 @@ export async function openPosition(req: AuthRequest, res: Response): Promise<voi
     const KZ_RATE          = brokerSettings?.bnaRate ?? 925
     const spreadMultiplier = brokerSettings?.spreadMultiplier ?? 1.0
     const maxLeverage      = brokerSettings?.maxLeverage ?? 200
-    const leverage         = Math.min(clientLeverage ?? config.leverage, maxLeverage)
-    const margin           = (lots * config.contractSize * openPrice / leverage) * KZ_RATE
-    const commission       = (config.commission * lots) * KZ_RATE
-    const spreadVal        = (config.spread * spreadMultiplier * lots * config.contractSize) * KZ_RATE
+
+    /* ── conversão Kz → lots ── */
+    let lots: number
+    let leverage: number
+
+    if (valorKz && valorKz > 0) {
+      /* nova interface: cliente envia valorKz, backend calcula lots */
+      leverage = 100
+      lots     = +(valorKz * leverage / (config.contractSize * openPrice * KZ_RATE)).toFixed(4)
+      if (lots < 0.001) {
+        res.status(400).json({ error: 'Valor mínimo insuficiente para este par. Tenta com um valor maior.' }); return
+      }
+    } else if (clientLots && clientLots > 0) {
+      /* interface legada: lots enviados directamente */
+      leverage = Math.min(clientLeverage ?? config.leverage, maxLeverage)
+      lots     = clientLots
+    } else {
+      res.status(400).json({ error: 'Valor da operação inválido.' }); return
+    }
+
+    const margin     = (lots * config.contractSize * openPrice / leverage) * KZ_RATE
+    const commission = (config.commission * lots) * KZ_RATE
+    const spreadVal  = (config.spread * spreadMultiplier * lots * config.contractSize) * KZ_RATE
 
     if (account.balance < margin + commission) {
       res.status(400).json({
