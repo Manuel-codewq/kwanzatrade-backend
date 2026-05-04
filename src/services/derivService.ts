@@ -3,11 +3,12 @@ import { Server } from 'socket.io'
 import { priceCache, getPriceWithSpread } from './priceService'
 import { prisma } from '../prisma/client'
 import { closePositionLogic } from './tradingService'
+import { isWeekend } from '../config/brokerConfig'
 
 const APP_ID = process.env.DERIV_APP_ID || '127916'
 const DERIV_WS_URL = `wss://ws.derivws.com/websockets/v3?app_id=${APP_ID}`
 
-/* Real forex symbols → internal symbol */
+/* Forex symbols (dias úteis) */
 const SYMBOL_MAP: Record<string, string> = {
   'frxEURUSD': 'EURUSD', 'frxGBPUSD': 'GBPUSD', 'frxUSDJPY': 'USDJPY',
   'frxUSDCHF': 'USDCHF', 'frxAUDUSD': 'AUDUSD', 'frxUSDCAD': 'USDCAD',
@@ -15,31 +16,21 @@ const SYMBOL_MAP: Record<string, string> = {
   'frxGBPJPY': 'GBPJPY', 'frxEURAUD': 'EURAUD', 'frxEURNZD': 'EURNZD', 'frxGBPCAD': 'GBPCAD',
 }
 
-/* Weekend continuous: Deriv synthetics shown to user as forex Weekend pairs */
+/* Weekend continuous: só subscrever ao Sáb/Dom */
 const WEEKEND_MAP: Record<string, string> = {
-  'R_10':     'WEURUSD',
-  'R_25':     'WGBPUSD',
-  'R_50':     'WUSDJPY',
-  'R_75':     'WAUDUSD',
-  'R_100':    'WUSDCAD',
-  '1HZ10V':   'WUSDCHF',
-  '1HZ25V':   'WEURGBP',
-  '1HZ50V':   'WEURJPY',
-  '1HZ75V':   'WGBPJPY',
-  '1HZ100V':  'WUSDAOA',
+  'R_10':    'WEURUSD', 'R_25':    'WGBPUSD', 'R_50':   'WUSDJPY',
+  'R_75':    'WAUDUSD', 'R_100':   'WUSDCAD', '1HZ10V': 'WUSDCHF',
+  '1HZ25V':  'WEURGBP', '1HZ50V':  'WEURJPY', '1HZ75V': 'WGBPJPY',
+  '1HZ100V': 'WUSDAOA',
 }
 
 const ALL_MAPS: Record<string, string> = { ...SYMBOL_MAP, ...WEEKEND_MAP }
-const WEEKEND_INTERNAL = new Set(Object.values(WEEKEND_MAP))
 
 class DerivService {
-  private ws:               WebSocket | null = null
-  private pingInterval:     NodeJS.Timeout | null = null
-  private fallbackInterval: NodeJS.Timeout | null = null
-  private fallbackTimer:    NodeJS.Timeout | null = null
-  private hasTick:          boolean = false
-  private io:               Server | null = null
-  private openPrices:       Record<string, number> = {}
+  private ws:           WebSocket | null = null
+  private pingInterval: NodeJS.Timeout | null = null
+  private io:           Server | null = null
+  private openPrices:   Record<string, number> = {}
 
   setIO(io: Server) {
     this.io = io
@@ -50,35 +41,29 @@ class DerivService {
   }
 
   private connect() {
-    console.log(`🔌 Conectando ao WebSocket da Deriv (App ID: ${APP_ID})...`)
+    console.log(`🔌 Conectando ao Deriv WS — App ID: ${APP_ID} — URL: ${DERIV_WS_URL}`)
     this.ws = new WebSocket(DERIV_WS_URL)
 
     this.ws.on('open', () => {
-      console.log('✅ Conectado à Deriv API')
+      console.log(`✅ Deriv WS conectado — App ID: ${APP_ID}`)
       this.subscribe()
       this.startHeartbeat()
     })
 
-    this.ws.on('message', (data: string) => {
+    this.ws.on('message', (raw: string) => {
       try {
-        const response = JSON.parse(data)
+        const msg = JSON.parse(raw)
 
-        if (response.error) {
-          console.error('❌ Erro Deriv:', response.error.message)
+        if (msg.error) {
+          console.error(`❌ Deriv erro [${msg.error.code}]: ${msg.error.message}`)
           return
         }
 
-        if (response.msg_type === 'tick') {
-          /* Primeiro tick real — parar fallback se estava activo */
-          if (!this.hasTick) {
-            this.hasTick = true
-            if (this.fallbackTimer)    { clearTimeout(this.fallbackTimer);    this.fallbackTimer    = null }
-            if (this.fallbackInterval) { clearInterval(this.fallbackInterval); this.fallbackInterval = null }
-            console.log('✅ Tick real recebido — fallback cancelado')
-          }
-
-          const { symbol, quote } = response.tick
+        if (msg.msg_type === 'tick') {
+          const { symbol, quote } = msg.tick
           const quoteVal = parseFloat(quote)
+          console.log(`📈 Tick: ${symbol} = ${quote}`)
+
           const internalSymbol = ALL_MAPS[symbol]
           if (!internalSymbol) return
 
@@ -100,68 +85,37 @@ class DerivService {
           if (updated) this.checkExecution(internalSymbol, updated.bid, updated.ask)
         }
       } catch (err) {
-        console.error('❌ Erro ao processar mensagem da Deriv:', err)
+        console.error('❌ Erro ao processar mensagem Deriv:', err)
       }
     })
 
-    this.ws.on('close', () => {
-      console.warn('⚠️ Conexão com Deriv fechada. Tentando reconectar em 5s...')
+    this.ws.on('close', (code: number, reason: Buffer) => {
+      console.warn(`⚠️ Deriv WS fechado — código: ${code} — motivo: ${reason.toString() || '(sem motivo)'}`)
       this.cleanup()
-      setTimeout(() => this.connect(), 5000)
+      console.log('🔁 A reconectar em 3s...')
+      setTimeout(() => this.connect(), 3000)
     })
 
-    this.ws.on('error', (err) => {
-      console.error('❌ Erro no WebSocket da Deriv:', err.message)
+    this.ws.on('error', (err: Error) => {
+      console.error(`❌ Erro Deriv WS: ${err.message}`)
     })
   }
 
   private subscribe() {
-    const allSymbols = Object.keys(ALL_MAPS)
-    this.hasTick = false
+    const weekend = isWeekend()
+    /* Dias úteis → só forex (frx*); fim de semana → só continuous (R_*, 1HZ*) */
+    const symbols = weekend ? Object.keys(WEEKEND_MAP) : Object.keys(SYMBOL_MAP)
 
-    allSymbols.forEach((derivSymbol, i) => {
+    console.log(`📡 Modo: ${weekend ? 'WEEKEND (continuous)' : 'WEEKDAY (forex)'} — a subscrever ${symbols.length} símbolos`)
+
+    symbols.forEach((derivSymbol, i) => {
       setTimeout(() => {
         if (this.ws?.readyState === WebSocket.OPEN) {
           this.ws.send(JSON.stringify({ ticks: derivSymbol, subscribe: 1 }))
+          console.log(`  ↳ Subscrito: ${derivSymbol} → ${ALL_MAPS[derivSymbol]}`)
         }
-      }, i * 100)
+      }, i * 150)
     })
-    console.log(`📡 A subscrever ${allSymbols.length} símbolos da Deriv (${Object.keys(SYMBOL_MAP).length} forex + ${Object.keys(WEEKEND_MAP).length} continuous)...`)
-
-    /* Fallback: se não chegar nenhum tick em 10s → simulação local no backend */
-    const delay = allSymbols.length * 100 + 10_000
-    if (this.fallbackTimer) clearTimeout(this.fallbackTimer)
-    this.fallbackTimer = setTimeout(() => {
-      if (!this.hasTick) {
-        console.warn('⚠️ Nenhum tick Deriv em 10s — activando simulação backend')
-        this.startFallbackSim()
-      }
-    }, delay)
-  }
-
-  private startFallbackSim() {
-    if (this.fallbackInterval) return
-    this.fallbackInterval = setInterval(() => {
-      if (!this.io) return
-      const updates: object[] = []
-      Object.values(ALL_MAPS).forEach(internalSym => {
-        const current = priceCache[internalSym]
-        if (!current) return
-        const delta = current * (Math.random() * 0.001 - 0.0005) // ±0.05%
-        const next  = +Math.max(0.0001, current + delta).toFixed(5)
-        priceCache[internalSym] = next
-        const updated = getPriceWithSpread(internalSym)
-        if (updated) {
-          updates.push({
-            ...updated,
-            marketType: WEEKEND_INTERNAL.has(internalSym) ? 'CONTINUOUS' : 'FOREX',
-            changePct:  +(delta / current * 100).toFixed(4),
-          })
-        }
-      })
-      if (updates.length) this.io!.emit('price_update', updates)
-    }, 1500)
-    console.log('🔄 Simulação backend activa — emitindo price_update a cada 1.5s')
   }
 
   private startHeartbeat() {
@@ -199,13 +153,12 @@ class DerivService {
         where: { symbol, status: 'OPEN', OR: [{ stopLoss: { not: null } }, { takeProfit: { not: null } }] },
       })
       for (const order of orders) {
-        let shouldClose = false
-        let triggerPrice = 0
+        let shouldClose = false; let triggerPrice = 0
         if (order.side === 'BUY') {
-          if (order.stopLoss && bid <= order.stopLoss)         { shouldClose = true; triggerPrice = bid }
+          if (order.stopLoss && bid <= order.stopLoss)          { shouldClose = true; triggerPrice = bid }
           else if (order.takeProfit && bid >= order.takeProfit) { shouldClose = true; triggerPrice = bid }
         } else {
-          if (order.stopLoss && ask >= order.stopLoss)         { shouldClose = true; triggerPrice = ask }
+          if (order.stopLoss && ask >= order.stopLoss)          { shouldClose = true; triggerPrice = ask }
           else if (order.takeProfit && ask <= order.takeProfit) { shouldClose = true; triggerPrice = ask }
         }
         if (shouldClose) {
@@ -213,7 +166,7 @@ class DerivService {
             .then(result => {
               if (this.io) this.io.emit('order_closed_auto', { id: order.id, symbol, profitLoss: result.profitLoss, reason: 'SL/TP' })
             })
-            .catch(err => console.error(`❌ Falha na execução auto ${order.id}:`, err.message))
+            .catch(err => console.error(`❌ Falha execução auto ${order.id}:`, err.message))
         }
       }
     } catch (err: any) {
