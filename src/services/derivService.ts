@@ -1,8 +1,6 @@
 import WebSocket from 'ws'
 import { Server } from 'socket.io'
 import { priceCache, getPriceWithSpread } from './priceService'
-import { prisma } from '../prisma/client'
-import { closePositionLogic } from './tradingService'
 import { isWeekend } from '../config/brokerConfig'
 
 const APP_ID = process.env.DERIV_APP_ID || '127916'
@@ -82,7 +80,6 @@ class DerivService {
             const isWeekendSym = WEEKEND_MAP[symbol] !== undefined
             this.io.emit('price_update', [{ ...updated, marketType: isWeekendSym ? 'CONTINUOUS' : 'FOREX', changePct }])
           }
-          if (updated) this.checkExecution(internalSymbol, updated.bid, updated.ask)
         }
       } catch (err) {
         console.error('❌ Erro ao processar mensagem Deriv:', err)
@@ -133,46 +130,6 @@ class DerivService {
     }
   }
 
-  private async checkExecution(symbol: string, bid: number, ask: number) {
-    try {
-      const pending = await prisma.order.findMany({ where: { symbol, status: 'PENDING' } })
-      for (const order of pending) {
-        if (!order.limitPrice) continue
-        const hit =
-          (order.side === 'BUY'  && ask <= order.limitPrice) ||
-          (order.side === 'SELL' && bid >= order.limitPrice)
-        if (hit) {
-          const fillPrice = order.side === 'BUY' ? ask : bid
-          await prisma.order.update({ where: { id: order.id }, data: { status: 'OPEN', openPrice: fillPrice } })
-          console.log(`⚡ LIMITE EXECUTADA ${order.side} ${symbol} @ ${fillPrice}`)
-          if (this.io) this.io.emit('limit_order_executed', { id: order.id, symbol, fillPrice })
-        }
-      }
-
-      const orders = await prisma.order.findMany({
-        where: { symbol, status: 'OPEN', OR: [{ stopLoss: { not: null } }, { takeProfit: { not: null } }] },
-      })
-      for (const order of orders) {
-        let shouldClose = false; let triggerPrice = 0
-        if (order.side === 'BUY') {
-          if (order.stopLoss && bid <= order.stopLoss)          { shouldClose = true; triggerPrice = bid }
-          else if (order.takeProfit && bid >= order.takeProfit) { shouldClose = true; triggerPrice = bid }
-        } else {
-          if (order.stopLoss && ask >= order.stopLoss)          { shouldClose = true; triggerPrice = ask }
-          else if (order.takeProfit && ask <= order.takeProfit) { shouldClose = true; triggerPrice = ask }
-        }
-        if (shouldClose) {
-          closePositionLogic(order.id, triggerPrice, order.userId)
-            .then(result => {
-              if (this.io) this.io.emit('order_closed_auto', { id: order.id, symbol, profitLoss: result.profitLoss, reason: 'SL/TP' })
-            })
-            .catch(err => console.error(`❌ Falha execução auto ${order.id}:`, err.message))
-        }
-      }
-    } catch (err: any) {
-      console.error('❌ Erro checkExecution:', err.message)
-    }
-  }
 }
 
 export const derivService = new DerivService()
