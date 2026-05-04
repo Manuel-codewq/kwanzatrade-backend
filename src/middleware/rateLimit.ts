@@ -18,7 +18,7 @@ export const authLimiter = rateLimit({
 
 export const authenticatedLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: process.env.NODE_ENV === 'production' ? 5 : 100,
+  max: process.env.NODE_ENV === 'production' ? 60 : 500,
   message: { error: 'Limite de pedidos atingido. Aguarde 1 minuto.' },
   standardHeaders: true,
   legacyHeaders: false,

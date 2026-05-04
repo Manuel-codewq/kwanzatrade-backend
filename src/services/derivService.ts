@@ -30,12 +30,16 @@ const WEEKEND_MAP: Record<string, string> = {
 }
 
 const ALL_MAPS: Record<string, string> = { ...SYMBOL_MAP, ...WEEKEND_MAP }
+const WEEKEND_INTERNAL = new Set(Object.values(WEEKEND_MAP))
 
 class DerivService {
-  private ws: WebSocket | null = null
-  private pingInterval: NodeJS.Timeout | null = null
-  private io: Server | null = null
-  private openPrices: Record<string, number> = {}
+  private ws:               WebSocket | null = null
+  private pingInterval:     NodeJS.Timeout | null = null
+  private fallbackInterval: NodeJS.Timeout | null = null
+  private fallbackTimer:    NodeJS.Timeout | null = null
+  private hasTick:          boolean = false
+  private io:               Server | null = null
+  private openPrices:       Record<string, number> = {}
 
   setIO(io: Server) {
     this.io = io
@@ -65,6 +69,14 @@ class DerivService {
         }
 
         if (response.msg_type === 'tick') {
+          /* Primeiro tick real — parar fallback se estava activo */
+          if (!this.hasTick) {
+            this.hasTick = true
+            if (this.fallbackTimer)    { clearTimeout(this.fallbackTimer);    this.fallbackTimer    = null }
+            if (this.fallbackInterval) { clearInterval(this.fallbackInterval); this.fallbackInterval = null }
+            console.log('✅ Tick real recebido — fallback cancelado')
+          }
+
           const { symbol, quote } = response.tick
           const quoteVal = parseFloat(quote)
           const internalSymbol = ALL_MAPS[symbol]
@@ -105,6 +117,8 @@ class DerivService {
 
   private subscribe() {
     const allSymbols = Object.keys(ALL_MAPS)
+    this.hasTick = false
+
     allSymbols.forEach((derivSymbol, i) => {
       setTimeout(() => {
         if (this.ws?.readyState === WebSocket.OPEN) {
@@ -113,6 +127,41 @@ class DerivService {
       }, i * 100)
     })
     console.log(`📡 A subscrever ${allSymbols.length} símbolos da Deriv (${Object.keys(SYMBOL_MAP).length} forex + ${Object.keys(WEEKEND_MAP).length} continuous)...`)
+
+    /* Fallback: se não chegar nenhum tick em 10s → simulação local no backend */
+    const delay = allSymbols.length * 100 + 10_000
+    if (this.fallbackTimer) clearTimeout(this.fallbackTimer)
+    this.fallbackTimer = setTimeout(() => {
+      if (!this.hasTick) {
+        console.warn('⚠️ Nenhum tick Deriv em 10s — activando simulação backend')
+        this.startFallbackSim()
+      }
+    }, delay)
+  }
+
+  private startFallbackSim() {
+    if (this.fallbackInterval) return
+    this.fallbackInterval = setInterval(() => {
+      if (!this.io) return
+      const updates: object[] = []
+      Object.values(ALL_MAPS).forEach(internalSym => {
+        const current = priceCache[internalSym]
+        if (!current) return
+        const delta = current * (Math.random() * 0.001 - 0.0005) // ±0.05%
+        const next  = +Math.max(0.0001, current + delta).toFixed(5)
+        priceCache[internalSym] = next
+        const updated = getPriceWithSpread(internalSym)
+        if (updated) {
+          updates.push({
+            ...updated,
+            marketType: WEEKEND_INTERNAL.has(internalSym) ? 'CONTINUOUS' : 'FOREX',
+            changePct:  +(delta / current * 100).toFixed(4),
+          })
+        }
+      })
+      if (updates.length) this.io!.emit('price_update', updates)
+    }, 1500)
+    console.log('🔄 Simulação backend activa — emitindo price_update a cada 1.5s')
   }
 
   private startHeartbeat() {
