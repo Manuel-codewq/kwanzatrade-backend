@@ -74,6 +74,19 @@ export async function getBinaryHistory(req: AuthRequest, res: Response): Promise
   }
 }
 
+/* GET /api/binary/payouts — retorna payouts configurados (autenticado) */
+export async function getBinaryPayouts(_req: AuthRequest, res: Response): Promise<void> {
+  try {
+    const settings = await prisma.brokerSettings.findFirst()
+    const defaultPayout = settings?.binaryPayoutDefault ?? 0.91
+    let payouts: Record<string, number> = {}
+    try { payouts = JSON.parse(settings?.binaryPayouts ?? '{}') } catch {}
+    res.json({ payouts, defaultPayout })
+  } catch {
+    res.status(500).json({ error: 'Erro interno' })
+  }
+}
+
 /* ── Admin routes ───────────────────────────────────────────── */
 
 /* GET /api/admin/binary/active */
