@@ -3,8 +3,6 @@ import { AuthRequest } from '../middleware/auth'
 import { prisma } from '../prisma/client'
 import { openOption } from '../services/binaryService'
 
-const VALID_EXPIRATIONS = [30, 60, 300, 900]
-
 /* POST /api/binary/open */
 export async function openBinaryOption(req: AuthRequest, res: Response): Promise<void> {
   try {
@@ -22,9 +20,15 @@ export async function openBinaryOption(req: AuthRequest, res: Response): Promise
     if (!['UP', 'DOWN'].includes(direction)) {
       res.status(400).json({ error: 'Direcção inválida — use UP ou DOWN' }); return
     }
-    if (!VALID_EXPIRATIONS.includes(expiration)) {
-      res.status(400).json({ error: 'Expiração inválida — use 30, 60, 300 ou 900 segundos' }); return
+
+    /* Validar expiração contra configuração do admin */
+    const settings = await prisma.brokerSettings.findFirst()
+    let validExpirations: number[] = [30, 60, 120, 300, 600, 900, 1800, 3600]
+    try { validExpirations = JSON.parse(settings?.binaryExpirations ?? '[]') } catch {}
+    if (!validExpirations.includes(expiration)) {
+      res.status(400).json({ error: `Expiração inválida` }); return
     }
+
     if (amount < 1000) {
       res.status(400).json({ error: 'Valor mínimo: 1.000 Kz' }); return
     }
@@ -74,14 +78,16 @@ export async function getBinaryHistory(req: AuthRequest, res: Response): Promise
   }
 }
 
-/* GET /api/binary/payouts — retorna payouts configurados (autenticado) */
+/* GET /api/binary/payouts — retorna payouts + expirações configurados (autenticado) */
 export async function getBinaryPayouts(_req: AuthRequest, res: Response): Promise<void> {
   try {
     const settings = await prisma.brokerSettings.findFirst()
     const defaultPayout = settings?.binaryPayoutDefault ?? 0.91
     let payouts: Record<string, number> = {}
-    try { payouts = JSON.parse(settings?.binaryPayouts ?? '{}') } catch {}
-    res.json({ payouts, defaultPayout })
+    let expirations: number[] = [30, 60, 120, 300, 600, 900, 1800, 3600]
+    try { payouts     = JSON.parse(settings?.binaryPayouts    ?? '{}') } catch {}
+    try { expirations = JSON.parse(settings?.binaryExpirations ?? '[]') } catch {}
+    res.json({ payouts, defaultPayout, expirations })
   } catch {
     res.status(500).json({ error: 'Erro interno' })
   }
@@ -136,19 +142,22 @@ export async function adminGetBinaryStats(_req: AuthRequest, res: Response): Pro
 /* PUT /api/admin/binary/payouts */
 export async function adminUpdateBinaryPayouts(req: AuthRequest, res: Response): Promise<void> {
   try {
-    const { payouts, defaultPayout } = req.body as {
-      payouts?:       Record<string, number>
+    const { payouts, defaultPayout, expirations } = req.body as {
+      payouts?:      Record<string, number>
       defaultPayout?: number
+      expirations?:  number[]
     }
     await prisma.brokerSettings.upsert({
       where:  { id: 1 },
       create: {
-        binaryPayouts:       payouts ? JSON.stringify(payouts) : '{}',
+        binaryPayouts:       payouts      ? JSON.stringify(payouts)      : '{}',
         binaryPayoutDefault: defaultPayout ?? 0.91,
+        binaryExpirations:   expirations  ? JSON.stringify(expirations)  : '[30,60,120,300,600,900,1800,3600]',
       },
       update: {
-        ...(payouts !== undefined && { binaryPayouts: JSON.stringify(payouts) }),
-        ...(defaultPayout !== undefined && { binaryPayoutDefault: defaultPayout }),
+        ...(payouts      !== undefined && { binaryPayouts:       JSON.stringify(payouts)     }),
+        ...(defaultPayout !== undefined && { binaryPayoutDefault: defaultPayout               }),
+        ...(expirations  !== undefined && { binaryExpirations:   JSON.stringify(expirations) }),
       },
     })
     res.json({ success: true })

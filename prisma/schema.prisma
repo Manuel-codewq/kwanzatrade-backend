@@ -223,6 +223,7 @@ model BrokerSettings {
   trc20WalletAddress  String   @default("")
   binaryPayoutDefault Float    @default(0.91)
   binaryPayouts       String   @default("{}")
+  binaryExpirations   String   @default("[30,60,120,300,600,900,1800,3600]")
   updatedAt           DateTime @updatedAt
 }
 
